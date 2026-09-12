@@ -32,7 +32,7 @@
         <div><span class="eyebrow">Wetter / Verkehr</span><strong id="conditions">Klar · frei</strong></div>
         <div><span class="eyebrow">Bewertung</span><strong id="score">0</strong></div>
       </div>
-      <div class="top-actions"><button class="ghost" id="soundToggle">Ton an</button><button class="ghost" id="newShift">Neue Schicht</button></div>
+      <div class="top-actions"><button class="ghost" id="commandButton" aria-label="Befehlspalette öffnen">⌘ Befehle</button><button class="ghost" id="soundToggle">Ton an</button><button class="ghost" id="newShift">Neue Schicht</button></div>
     </header>
 
     <section class="kpi-row" aria-label="Schichtkennzahlen">
@@ -94,6 +94,11 @@
   <dialog id="settingsDialog" class="info-dialog">
     <div class="dialog-head"><div><p class="eyebrow">System</p><h2>Einstellungen</h2></div><button class="close" data-close-dialog aria-label="Schließen">×</button></div>
     <div class="info-content"><label class="setting-row"><span><strong>Akustische Hinweise</strong><small>Signaltöne bei Notrufen und Statuswechseln</small></span><input id="menuSoundToggle" type="checkbox" checked></label><p class="muted">Der Spielstand wird automatisch lokal im Browser gespeichert. Es werden keine Daten übertragen.</p></div>
+  </dialog>
+  <dialog id="commandDialog" class="info-dialog command-dialog" aria-labelledby="commandTitle">
+    <div class="dialog-head"><div><p class="eyebrow">Tastatursteuerung</p><h2 id="commandTitle">Befehlspalette</h2></div><button class="close" data-close-dialog aria-label="Schließen">×</button></div>
+    <input id="commandSearch" class="command-search" type="search" placeholder="Suchen: Notruf, Funk, Hilfe …" aria-label="Befehle durchsuchen">
+    <div id="commandList" class="command-list"></div>
   </dialog>
   <script src="data-provider.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"

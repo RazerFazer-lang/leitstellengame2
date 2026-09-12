@@ -2,7 +2,7 @@
 
 Eine lokal laufende, deutschsprachige Leitstellensimulation im Browser. Du übernimmst eine Schicht in einer integrierten Leitstelle, nimmst Notrufe auf, bewertest die Lage und disponierst Feuerwehr, Rettungsdienst, Polizei und technische Hilfe.
 
-## Architektur- und Datenphase (2–8)
+## Implementierungsstand · Phase 3
 
 Die aktuelle Phase ergänzt eine echte, aber bewusst begrenzte Geodaten-Grundlage für
 Schleswig-Holstein (Kiel, Rendsburg, Eckernförde und weitere Orte) sowie verifizierbare
@@ -17,6 +17,16 @@ bleiben auch dann interaktiv; Routen werden als direkte Verbindung und mit der
 lokalen ETA-Schätzung dargestellt.
 `data/region.geojson` ist eine kleine, lokale Seed-Datei und wird nicht als Live-Datenquelle
 behauptet.
+
+Die aktuelle Ausbaustufe hat zusätzlich eine kleine ereignisorientierte Simulationsschicht:
+Notruf, Triage, Disposition, Statuswechsel und Autosave werden als typisierte Ereignisse
+veröffentlicht. Spielstände werden von `v2` nach Schema 4 migriert und bei beschädigten
+Feldern defensiv bereinigt. Einheiten, Wachen und Kliniken sind echte Spielentitäten mit
+Fachkomponenten, Bettenkapazität und Eignungsfilter; medizinische Einsätze können eine
+geeignete Zielklinik wählen. MANV-artige Lagen (mehrere Betroffene), Gefahrgut und
+Gewaltlagen erzeugen automatisch mehrere benötigte Behörden und zeigen Ressourcenlücken.
+Tageszeit, Wetter und Verkehr beeinflussen die lokale ETA-Schätzung. Die Befehls-Palette
+(`Ctrl+K`) ergänzt die Tastensteuerung und ist ohne Backend nutzbar.
 
 Der Provider kann optional über `loadGeoJSON(url)` eine GeoJSON-Datei laden oder über
 `configureRouting(endpoint)` einen eigenen Routing-Dienst konfigurieren. Das optionale
@@ -36,6 +46,17 @@ Koordinaten sind nur Spiel-Saatdaten, nicht für Disposition, Navigation oder
 Echtbetrieb geeignet. Es gibt keine Live-Verkehrs-, Leitstellen- oder Klinikbelegung.
 Die Online-Karte zeigt diese Attribution direkt im Leaflet-Kartenrand; die
 Offline-Karte behauptet keine OSM-Kacheln und kennzeichnet ihre lokale Saatdatenbasis.
+
+## Bewusst noch nicht implementiert
+
+Die Simulation ist kein Einsatzleitsystem. Es gibt keine Live-Leitstellen-, Verkehrs-,
+Wetter- oder Klinikdaten, keine echte Straßengraph-Navigation, keine Satellitenbilder und
+keine automatische Vollabdeckung Deutschlands. Online-Routing und GeoJSON bleiben
+konfigurierbare, explizite Opt-in-Schnittstellen. Es gibt keinen Server, kein Konto, keine
+Synchronisierung und kein Multiplayer; der lokale Event-Bus ist nur eine In-App-Architektur.
+Wirtschaft/Personalplanung, Replay-Export, Audio-Assets, vollständige MANV-Triage,
+Fahrzeugbesatzungen und behördliche Fachdaten sind weitere Phasen. Unbekannte oder
+fehlerhafte Daten fallen sichtbar auf Offline-ETA bzw. den sicheren Ausgangszustand zurück.
 
 ## Start
 
@@ -67,6 +88,8 @@ Beim ersten Öffnen erscheint das Startmenü. **Neue Schicht starten** legt eine
 | `2` | Rettungsdienst disponieren |
 | `3` | Polizei disponieren |
 | `4` | Technische Hilfe disponieren |
+| `Ctrl+K` | Befehle durchsuchen |
+| `Esc` | Dialog oder Palette schließen |
 
 Die Schicht wird automatisch in `localStorage` gespeichert. „Neue Schicht“ setzt Spielstand, Queue, Einheiten und Funklog kontrolliert zurück. Ein zweiter Browser-Tab ist unabhängig und benötigt keinen Server-State.
 

@@ -21,10 +21,17 @@ const WEATHER = [
   {name:'Regen', traffic:'zäh', factor:1.35, icon:'☂'}, {name:'Nebel', traffic:'zäh', factor:1.5, icon:'◌'},
   {name:'Schneefall', traffic:'kritisch', factor:1.7, icon:'❄'}
 ];
-const KEY = 'leitstelle-nord-save-v2';
+const KEY = 'leitstelle-nord-save-v3';
+const SCHEMA_VERSION = 4;
+const EVENTS = Object.freeze({ CALL_RECEIVED:'call.received', TRIAGED:'incident.triaged', DISPATCHED:'units.dispatched', STATUS:'incident.status', AUTOSAVE:'state.autosave', ERROR:'system.error' });
+const eventBus = (() => {
+  const listeners = new Map();
+  return { on(type, handler) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(handler); return () => listeners.get(type)?.delete(handler); },
+    emit(type, payload) { listeners.get(type)?.forEach(handler => { try { handler(payload); } catch (_) {} }); } };
+})();
 const emptyState = () => ({
-  schemaVersion:3, minute:360, score:0, closed:0, calls:0, answered:0, answerSeconds:0, selected:null, filter:'all', started:false,
-  weather:0, incidents:[], logs:[], units:FLEET.map(([call,type,model,base,capability,stationId])=>({call,type,model,base,capability,stationId,status:'Bereit',incidentId:null,eta:0}))
+  schemaVersion:SCHEMA_VERSION, minute:360, score:0, closed:0, calls:0, answered:0, answerSeconds:0, selected:null, filter:'all', started:false,
+  weather:0, incidents:[], logs:[], events:[], shiftStartedAt:null, units:FLEET.map(([call,type,model,base,capability,stationId])=>({call,type,model,base,capability,stationId,status:'Bereit',incidentId:null,eta:0}))
 });
 let state = emptyState();
 let sound = true;
@@ -39,11 +46,15 @@ let mapUsesFallback = false;
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const clock = () => `${String(Math.floor(state.minute / 60) % 24).padStart(2,'0')}:${String(state.minute % 60).padStart(2,'0')}`;
+['call.received','incident.triaged','units.dispatched','incident.status'].forEach(type => eventBus.on(type, payload => {
+  state.events.push({type, minute:state.minute, incidentId:payload?.incident?.id || payload?.id || null});
+  state.events=state.events.slice(-100);
+}));
 const typeName = type => TYPES[type]?.label || type;
 const priorityName = value => value === 1 ? 'P1 · Lebensgefahr' : value === 2 ? 'P2 · Dringend' : 'P3 · Normal';
 const stateName = value => ({new:'Neu · Triage', triage:'Triage abgeschlossen', dispatched:'Dispo bestätigt', enroute:'Anfahrt', scene:'Vor Ort', transport:'Transport', returning:'Rückfahrt', closed:'Abgeschlossen'}[value] || value);
 const log = text => { state.logs.unshift({time:clock(),text}); state.logs=state.logs.slice(0,24); };
-const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (_) {} };
+const save = () => { try { state.schemaVersion=SCHEMA_VERSION; state.savedAt=new Date().toISOString(); localStorage.setItem(KEY, JSON.stringify(state)); eventBus.emit(EVENTS.AUTOSAVE, state.savedAt); } catch (error) { eventBus.emit(EVENTS.ERROR, error); notify('Autospeichern nicht möglich – Browser-Speicher prüfen.'); } };
 const notify = text => { const node=$('toast'); node.textContent=text; node.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>node.classList.remove('show'),3200); };
 function tone(frequency=640) {
   if (!sound) return;
@@ -63,18 +74,23 @@ function makeIncident(overrides={}) {
     age:0, eta:0, units:[], followUp:false, escalated:false, persons:Number(overrides.persons||1),
     hazard:overrides.hazard||'none', lastUpdate:state.minute,
     coordinates: overrides.coordinates || DATA.coordinates(district), receivedAt: overrides.receivedAt || clock(),
-    channel: overrides.channel || 'phone', callback: overrides.callback || 'Nicht übermittelt', locationAccuracy: overrides.locationAccuracy || 'Ortsteil bestätigt'};
+    channel: overrides.channel || 'phone', callback: overrides.callback || 'Nicht übermittelt', locationAccuracy: overrides.locationAccuracy || 'Ortsteil bestätigt',
+    hospitalId: overrides.hospitalId || null, hospitalCapability: overrides.hospitalCapability || (type === 'med' ? (priority === 1 ? 'cardiac' : 'trauma') : null),
+    agencies: overrides.agencies || recommendationsFor(type, priority, overrides.persons, overrides.hazard), failure: null};
+}
+function recommendationsFor(type, priority, persons=1, hazard='none') {
+  const needed = type==='med'?['med']:type==='fire'?['fire']:type==='police'?['police']:['rescue'];
+  if (priority===1 || Number(persons)>1) needed.push('med');
+  if (hazard==='hazard') needed.push('fire');
+  if (hazard==='weapon') needed.push('police');
+  return [...new Set(needed)];
 }
 function seed() {
   state.incidents=[makeIncident({type:'med',priority:1,district:'Kiel',label:'Herzstillstand',location:'UKSH Campus Kiel, Notaufnahme',details:'Reanimation läuft, Ersthelfer vor Ort.',persons:1}),makeIncident({type:'fire',priority:2,district:'Rendsburg',label:'Rauchentwicklung',details:'Dichter Rauch aus Lagerhalle, keine Personen bestätigt.',hazard:'hazard'}),makeIncident({type:'police',priority:3,district:'Kiel',label:'Verkehrsunfall',details:'Zwei Fahrzeuge, Blechschaden, Verkehr stockt.',persons:2})];
   state.calls=state.incidents.length; state.selected=state.incidents[0].id; state.logs=[]; log('Schicht übernommen. Drei Lagen warten auf Erstbewertung.'); save();
 }
 function recommendations(incident) {
-  let needed=incident.type==='med'?['med']:incident.type==='fire'?['fire']:incident.type==='police'?['police']:['rescue'];
-  if(incident.priority===1 || incident.persons>1) needed=[...needed,'med'];
-  if(incident.hazard==='hazard' && !needed.includes('fire')) needed.push('fire');
-  if(incident.hazard==='weapon' && !needed.includes('police')) needed.push('police');
-  return [...new Set(needed)];
+  return incident.agencies?.length ? incident.agencies : recommendationsFor(incident.type, incident.priority, incident.persons, incident.hazard);
 }
 function available(type) { return state.units.filter(unit=>unit.type===type && unit.status==='Bereit'); }
 function renderQueue() {
@@ -101,6 +117,7 @@ function renderDetails() {
     <div class="detail-header"><div><p class="eyebrow">${esc(i.id)} · ${priorityName(i.priority)}</p><h2>${esc(i.label)}</h2><span class="state">${stateName(i.status)}</span></div><i class="type-dot ${TYPES[i.type].color}"></i></div>
     <div class="detail-facts"><div class="fact"><span>Ort</span><strong>${esc(i.location)}</strong></div><div class="fact"><span>Anrufer/in · Rückruf</span><strong>${esc(i.caller)} · ${esc(i.callback)}</strong></div><div class="fact"><span>Ortsteil · Eingang</span><strong>${esc(i.district)} · ${esc(i.receivedAt || clockFor(i.created))}</strong></div><div class="fact"><span>Betroffene · Einheiten</span><strong>${i.persons} · ${assigned.length||'—'}</strong></div><div class="fact"><span>Annahmeweg · Genauigkeit</span><strong>${i.channel==='phone'?'Telefon 112':i.channel==='app'?'Notruf-App':'Funk'} · ${esc(i.locationAccuracy)}</strong></div><div class="fact"><span>Routing / ETA</span><strong>${assigned.length ? `${assigned.map(u=>u.route?.distanceKm ? `${u.route.distanceKm} km` : '—').join(', ')} · ${i.eta || '—'} min` : 'Noch nicht disponiert'}</strong></div></div>
     <p class="detail-description">${esc(i.details)}</p>
+    ${i.type==='med' ? `<label class="hospital-picker"><span class="eyebrow">Zielklinik · ${esc(i.hospitalCapability || 'trauma')}</span><select class="hospital-select"><option value="">Automatisch nach Eignung</option>${DATA.suitableHospitals(i).map(item=>`<option value="${esc(item.hospital.id)}" ${i.hospitalId===item.hospital.id?'selected':''}>${esc(item.hospital.name)} · ${item.route.etaMinutes} min · ${item.hospital.beds} Betten</option>`).join('')}</select></label>` : ''}
     <div class="recommendation"><strong>Vorschlag Leitstelle</strong><br>${rec.map(typeName).join(' + ')}${i.priority===1?' · Sonderrechte anfordern':''}${i.hazard!=='none'?` · ${i.hazard==='weapon'?'Polizeischutz':'Gefahrgut beachten'}`:''}</div>
     ${i.status==='new'?'<div class="triage-box"><strong>Erstbewertung ausstehend</strong><br><span>Angaben prüfen, Rückruf sichern und Lagebild bestätigen.</span></div>':''}
     <div class="unit-picker"><p class="eyebrow">Manuelle Disposition · freie Einheiten</p>${candidates.length?candidates.map(u=>`<label class="unit-option"><input type="checkbox" value="${u.call}" ${i.units.includes(u.call)?'checked':''}><span><strong>${u.call}</strong> · ${u.model}</span><small>${u.base}</small></label>`).join(''):'<span class="incident-meta">Keine passenden Einheiten frei.</span>'}</div>
@@ -109,6 +126,7 @@ function renderDetails() {
     <div class="detail-actions"><button class="ghost follow-up" ${actionDisabled?'disabled':''}>＋ Rückfrage / Folgeeinsatz</button><button class="ghost escalate danger" ${i.escalated||actionDisabled?'disabled':''}>⚠ Eskalieren</button></div>
   </section>`;
   $('incidentDetails').querySelector('.dispatch-action')?.addEventListener('click',()=>dispatch(i));
+  $('incidentDetails').querySelector('.hospital-select')?.addEventListener('change',event=>{i.hospitalId=event.currentTarget.value||null;save();render();});
   $('incidentDetails').querySelector('.triage-action')?.addEventListener('click',()=>triage(i));
   $('incidentDetails').querySelector('.follow-up')?.addEventListener('click',()=>followUp(i));
   $('incidentDetails').querySelector('.escalate')?.addEventListener('click',()=>escalate(i));
@@ -116,7 +134,7 @@ function renderDetails() {
 function triage(i){
   i.status='triage'; i.lastUpdate=state.minute; state.answered++; state.answerSeconds+=Math.max(0,i.age*60);
   log(`${i.id}: Erstbewertung abgeschlossen · ${priorityName(i.priority)} · ${i.persons} Betroffene.`);
-  notify(`${i.id} ist disponierbar.`); tone(740); save(); render();
+  eventBus.emit(EVENTS.TRIAGED, i); notify(`${i.id} ist disponierbar.`); tone(740); save(); render();
 }
 async function dispatch(incident) {
   if(incident.status==='new'){notify('Erstbewertung zuerst abschließen.');return;}
@@ -128,9 +146,15 @@ async function dispatch(incident) {
   }
   incident.units.forEach(call=>{if(!selected.includes(call)){const unit=state.units.find(u=>u.call===call);if(unit){unit.status='Bereit';unit.incidentId=null;}}});
   const missing=recommendations(incident).filter(type=>!selected.some(call=>state.units.find(u=>u.call===call)?.type===type));
-  for(const call of selected){const unit=state.units.find(u=>u.call===call);if(unit&& (unit.status==='Bereit'||incident.units.includes(call))){const route=await DATA.routeAsync(DATA.station(unit.stationId)||DATA.region.center,incident.coordinates,WEATHER[state.weather].factor);unit.status='Anfahrt';unit.incidentId=incident.id;unit.eta=route.etaMinutes;unit.route=route;}}
+  try {
+    for(const call of selected){const unit=state.units.find(u=>u.call===call);if(unit&& (unit.status==='Bereit'||incident.units.includes(call))){const route=await DATA.routeAsync(DATA.station(unit.stationId)||DATA.region.center,incident.coordinates,WEATHER[state.weather].factor,{hour:Math.floor(state.minute/60)%24,weather:WEATHER[state.weather].name});unit.status='Anfahrt';unit.incidentId=incident.id;unit.eta=route.etaMinutes;unit.route=route;}}
+  } catch (error) {
+    incident.failure='Routing fehlgeschlagen – lokale ETA verwendet';
+    eventBus.emit(EVENTS.ERROR,error);
+    log(`${incident.id}: ${incident.failure}.`);
+  }
   incident.units=selected; incident.status='enroute'; incident.eta=Math.max(...selected.map(call=>state.units.find(u=>u.call===call)?.eta||4));
-  incident.lastUpdate=state.minute; state.score+=missing.length?-4:(incident.priority===1?18:10); log(`${selected.join(', ')} für ${incident.id} alarmiert · Anfahrt nach ${incident.district}.${missing.length?' Fehlende Fachkomponente: '+missing.map(typeName).join(', '):''}`); notify(missing.length?'Disposition mit Lücke bestätigt.':'Disposition bestätigt.'); tone(820); save(); render();
+  incident.lastUpdate=state.minute; state.score+=missing.length?-4:(incident.priority===1?18:10); eventBus.emit(EVENTS.DISPATCHED,{incident,selected,missing}); log(`${selected.join(', ')} für ${incident.id} alarmiert · Anfahrt nach ${incident.district}.${missing.length?' Fehlende Fachkomponente: '+missing.map(typeName).join(', '):''}`); notify(missing.length?'Disposition mit Lücke bestätigt.':'Disposition bestätigt.'); tone(820); save(); render();
 }
 function followUp(i){i.followUp=true;i.lastUpdate=state.minute;i.details+=' Rückmeldung angefordert.';log(`Rückfrage bei ${i.id} gestellt. Lage wird aktualisiert.`);notify('Rückfrage an Einsatzstelle gesendet.');save();render();}
 function escalate(i){i.escalated=true;i.priority=1;log(`${i.id} hochgestuft: Einsatzleitung und Sonderbedarf informiert.`);notify('Einsatz auf P1 eskaliert.');tone(980);save();render();}
@@ -237,16 +261,16 @@ function tick(){
   if(state.minute%90===0){state.weather=(state.weather+1)%WEATHER.length;log(`Wetterlage: ${WEATHER[state.weather].name}. Verkehrslage ${WEATHER[state.weather].traffic}.`);}
   state.incidents.forEach(i=>{if(i.status==='closed')return;i.age++;
     if(!i.units.length && i.age>8 && !i.escalated){i.escalated=true;i.priority=Math.max(1,i.priority-1);state.score=Math.max(0,state.score-6);log(`${i.id}: Keine Einheit verfügbar, Priorität angehoben.`);tone(980);}
-    if(i.status==='enroute'){i.eta--;i.units.forEach(call=>{const u=state.units.find(x=>x.call===call);if(u)u.eta=i.eta;});if(i.eta<=0){i.status='scene';i.eta=4;log(`${i.id}: ${i.units.join(', ')} vor Ort, erste Lagemeldung folgt.`);}}
+    if(i.status==='enroute'){i.eta--;i.units.forEach(call=>{const u=state.units.find(x=>x.call===call);if(u)u.eta=i.eta;});if(i.eta<=0){i.status='scene';i.eta=4;eventBus.emit(EVENTS.STATUS,{incident:i,status:i.status});log(`${i.id}: ${i.units.join(', ')} vor Ort, erste Lagemeldung folgt.`);}}
     else if(i.status==='scene'){i.eta--;if(i.eta<=0){if(i.type==='med'&&i.priority<3){i.status='transport';i.eta=5;log(`${i.id}: Patient wird in geeignete Klinik transportiert.`);}else{i.status='returning';i.eta=3;log(`${i.id}: Lage unter Kontrolle, Einheiten rücken ab.`);}}}
-    else if(i.status==='transport'){i.eta--;if(i.eta<=0){i.status='returning';i.eta=3;log(`${i.id}: Übergabe im Klinikum erfolgt.`);}}
+    else if(i.status==='transport'){i.eta--;if(i.eta<=0){i.status='returning';i.eta=3;if(i.hospitalId){const hospital=DATA.hospital(i.hospitalId);if(hospital)hospital.beds=Math.max(0,hospital.beds-1);}eventBus.emit(EVENTS.STATUS,{incident:i,status:i.status});log(`${i.id}: Übergabe${i.hospitalId?' in '+(DATA.hospital(i.hospitalId)?.name||'Klinikum'):''} erfolgt.`);}}
     else if(i.status==='returning'){i.eta--;if(i.eta<=0){i.status='closed';state.closed++;state.score+=i.priority===1?35:20;i.units.forEach(call=>{const u=state.units.find(x=>x.call===call);if(u){u.status='Bereit';u.incidentId=null;u.eta=0;}});log(`${i.id}: Einsatz abgeschlossen. Einheiten wieder bereit.`);}}
   }); save();render();
 }
-function newAutoCall(){if(state.incidents.filter(i=>i.status!=='closed').length>=8)return;const i=makeIncident();state.incidents.push(i);state.selected=i.id;state.calls++;log(`Neuer Notruf: ${i.label} in ${i.district} · ${priorityName(i.priority)}.`);notify(`Neuer Notruf ${i.id}: ${i.label}`);tone(880);save();render();}
+function newAutoCall(){if(state.incidents.filter(i=>i.status!=='closed').length>=8)return;const i=makeIncident();state.incidents.push(i);state.selected=i.id;state.calls++;eventBus.emit(EVENTS.CALL_RECEIVED,i);log(`Neuer Notruf: ${i.label} in ${i.district} · ${priorityName(i.priority)}.`);notify(`Neuer Notruf ${i.id}: ${i.label}`);tone(880);save();render();}
 function openCallDialog(){const dialog=$('callDialog');if(dialog.showModal)dialog.showModal();else dialog.setAttribute('open','');}
 function hasSavedState(){
-  try { const value=JSON.parse(localStorage.getItem(KEY)||'null'); return Boolean(value && value.started===true && Array.isArray(value.units) && Array.isArray(value.incidents)); } catch (_) { return false; }
+  try { const value=JSON.parse(localStorage.getItem(KEY)||localStorage.getItem('leitstelle-nord-save-v2')||'null'); return Boolean(value && value.started===true && Array.isArray(value.units) && Array.isArray(value.incidents)); } catch (_) { return false; }
 }
 function resetShift(){state=emptyState();seed();render();}
 function showMenu(){
@@ -265,25 +289,41 @@ function startSimulation(useSave){
   if(leafletMap) setTimeout(()=>leafletMap.invalidateSize(),0);
   render();
 }
+function migrate(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const migrated={...emptyState(),...raw, schemaVersion:SCHEMA_VERSION};
+  migrated.events=Array.isArray(raw.events)?raw.events:[];
+  migrated.incidents=(Array.isArray(raw.incidents)?raw.incidents:[]).map(i=>({...i,agencies:Array.isArray(i.agencies)?i.agencies:recommendationsFor(i.type,i.priority,i.persons,i.hazard),failure:i.failure||null,hospitalId:i.hospitalId||null}));
+  return migrated;
+}
+function openCommandPalette() {
+  const dialog=$('commandDialog'), commands=[
+    ['Notruf erfassen','N',openCallDialog],['Funkverkehr fokussieren','R',()=>{$('radioLog').scrollIntoView({behavior:'smooth'});dialog.close();}],
+    ['Ausgewählten Einsatz anzeigen','Enter',()=>{renderDetails();dialog.close();}],['Hilfe öffnen','?',()=>{$('helpDialog').showModal();dialog.close();}]
+  ];
+  const draw=()=>{const query=$('commandSearch').value.toLowerCase();$('commandList').innerHTML=commands.filter(item=>item[0].toLowerCase().includes(query)).map((item,index)=>`<button class="command-item" data-command="${index}"><span>${esc(item[0])}</span><small>${esc(item[1])}</small></button>`).join('');$('commandList').querySelectorAll('[data-command]').forEach(button=>button.addEventListener('click',()=>commands[Number(button.dataset.command)][2]()));};
+  $('commandSearch').value=''; draw(); $('commandSearch').oninput=draw; dialog.showModal(); setTimeout(()=>$('commandSearch').focus(),0);
+}
 function setup(){
-  try{const stored=JSON.parse(localStorage.getItem(KEY)||'null');if(stored&&Array.isArray(stored.units)&&Array.isArray(stored.incidents)){state={...emptyState(),...stored,units:stored.units,incidents:stored.incidents};}}catch(_){state=emptyState();}
+  try{const stored=JSON.parse(localStorage.getItem(KEY)||localStorage.getItem('leitstelle-nord-save-v2')||'null');const migrated=migrate(stored);if(migrated)state=migrated;}catch(_){state=emptyState();notify('Spielstand beschädigt – mit sicherem Ausgangszustand gestartet.');}
   if(typeof state.started!=='boolean')state.started=Boolean(state.score||state.closed||state.answered||state.minute>360||state.incidents.some(i=>i&&i.status&&i.status!=='new'));
   state.units=Array.isArray(state.units)?state.units.map((unit,index)=>({...unit,call:unit.call||FLEET[index]?.[0]||`U-${index+1}`,type:unit.type||FLEET[index]?.[1]||'rescue',status:unit.status||'Bereit',incidentId:unit.incidentId||null,eta:Number.isFinite(unit.eta)?unit.eta:0,capability:unit.capability||FLEET[index]?.[4]||'Standard',stationId:unit.stationId||FLEET[index]?.[5]||null})):emptyState().units;
   state.incidents=Array.isArray(state.incidents)?state.incidents.filter(i=>i&&typeof i==='object'&&TYPES[i.type]):[];
   state.minute=Number.isFinite(state.minute)?Math.max(360,state.minute):360;
   state.weather=Number.isInteger(state.weather)&&state.weather>=0&&state.weather<WEATHER.length?state.weather:0;
   ['score','closed','calls','answered','answerSeconds'].forEach(key=>{if(!Number.isFinite(state[key]))state[key]=0;});
-  state.incidents.forEach(i=>{if(!i.status)i.status='new';if(i.persons==null)i.persons=1;if(!i.hazard)i.hazard='none';if(!Array.isArray(i.units))i.units=[];if(!Number.isFinite(i.age))i.age=0;if(!Number.isFinite(i.priority)||i.priority<1||i.priority>3)i.priority=2;if(!i.coordinates)i.coordinates=DATA.coordinates(i.district);if(!i.receivedAt)i.receivedAt=clockFor(i.created||state.minute);if(!i.channel)i.channel='phone';if(!i.callback)i.callback='Nicht übermittelt';if(!i.locationAccuracy)i.locationAccuracy='Ortsteil bestätigt';});
+  state.incidents.forEach(i=>{if(!i.status)i.status='new';if(i.persons==null)i.persons=1;if(!i.hazard)i.hazard='none';if(!Array.isArray(i.units))i.units=[];if(!Number.isFinite(i.age))i.age=0;if(!Number.isFinite(i.priority)||i.priority<1||i.priority>3)i.priority=2;if(!i.coordinates||!Number.isFinite(i.coordinates.lat)||!Number.isFinite(i.coordinates.lon))i.coordinates=DATA.coordinates(i.district);if(!i.receivedAt)i.receivedAt=clockFor(i.created||state.minute);if(!i.channel)i.channel='phone';if(!i.callback)i.callback='Nicht übermittelt';if(!i.locationAccuracy)i.locationAccuracy='Ortsteil bestätigt';if(!Array.isArray(i.agencies))i.agencies=recommendations(i);});
   if(!state.incidents.length)seed();
   $('districtSelect').innerHTML=Object.keys(DISTRICTS).map(name=>`<option>${name}</option>`).join('');
   document.querySelectorAll('.filter').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('.filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');state.filter=btn.dataset.filter;render();}));
   $('newCall').addEventListener('click',openCallDialog);$('radioButton').addEventListener('click',()=>{$('radioLog').focus();notify('Funkverkehr fokussiert.');});
   $('soundToggle').addEventListener('click',()=>{sound=!sound;render();});$('newShift').addEventListener('click',()=>{if(confirm('Aktuelle Schicht wirklich zurücksetzen?')){startSimulation(false);notify('Neue Schicht gestartet.');}});
+  $('commandButton').addEventListener('click',openCommandPalette);
   $('startShift').addEventListener('click',()=>startSimulation(false));$('continueShift').addEventListener('click',()=>{if(hasSavedState())startSimulation(true);});
   $('helpButton').addEventListener('click',()=>$('helpDialog').showModal());$('settingsButton').addEventListener('click',()=>{$('menuSoundToggle').checked=sound;$('settingsDialog').showModal();});
   $('menuSoundToggle').addEventListener('change',event=>{sound=event.currentTarget.checked;render();});document.querySelectorAll('[data-close-dialog]').forEach(button=>button.addEventListener('click',()=>button.closest('dialog').close()));
-  $('callForm').addEventListener('submit',event=>{event.preventDefault();const data=new FormData(event.currentTarget),i=makeIncident({type:data.get('type'),priority:data.get('priority'),location:data.get('location'),district:data.get('district'),caller:data.get('caller')||'Unbekannt',callback:data.get('callback')||'Nicht übermittelt',channel:data.get('channel'),details:data.get('details')||'Keine weiteren Angaben.',persons:data.get('persons'),hazard:data.get('hazard')});state.incidents.push(i);state.selected=i.id;state.calls++;log(`Notruf aufgenommen: ${i.id} · ${i.label} in ${i.district} · ${i.channel==='phone'?'112':'digitaler Eingang'}.`);event.currentTarget.closest('dialog').close();notify(`Einsatz ${i.id} angelegt · Erstbewertung erforderlich.`);tone(880);save();render();});
-  document.addEventListener('keydown',event=>{if(event.target.matches('input,textarea,select'))return;if(event.key.toLowerCase()==='n')openCallDialog();if(event.key.toLowerCase()==='r'){$('radioLog').scrollIntoView({behavior:'smooth'});notify('Funkverkehr geöffnet.');}if(['1','2','3','4'].includes(event.key)){const i=state.incidents.find(x=>x.id===state.selected);if(i){const type=['fire','med','police','rescue'][Number(event.key)-1];const unit=available(type)[0];if(unit){state.selected=i.id;renderDetails();const checkbox=document.querySelector(`.unit-option input[value="${unit.call}"]`);if(checkbox){checkbox.checked=true;document.querySelector('.dispatch-action').click();}}}}});
+  $('callForm').addEventListener('submit',event=>{event.preventDefault();const data=new FormData(event.currentTarget),i=makeIncident({type:data.get('type'),priority:data.get('priority'),location:data.get('location'),district:data.get('district'),caller:data.get('caller')||'Unbekannt',callback:data.get('callback')||'Nicht übermittelt',channel:data.get('channel'),details:data.get('details')||'Keine weiteren Angaben.',persons:data.get('persons'),hazard:data.get('hazard')});state.incidents.push(i);state.selected=i.id;state.calls++;eventBus.emit(EVENTS.CALL_RECEIVED,i);log(`Notruf aufgenommen: ${i.id} · ${i.label} in ${i.district} · ${i.channel==='phone'?'112':'digitaler Eingang'}.`);event.currentTarget.closest('dialog').close();notify(`Einsatz ${i.id} angelegt · Erstbewertung erforderlich.`);tone(880);save();render();});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'){document.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());return;}if(event.ctrlKey&&event.key.toLowerCase()==='k'){event.preventDefault();openCommandPalette();return;}if(event.target.matches('input,textarea,select'))return;if(event.key.toLowerCase()==='n')openCallDialog();if(event.key.toLowerCase()==='r'){$('radioLog').scrollIntoView({behavior:'smooth'});notify('Funkverkehr geöffnet.');}if(['1','2','3','4'].includes(event.key)){const i=state.incidents.find(x=>x.id===state.selected);if(i){const type=['fire','med','police','rescue'][Number(event.key)-1];const unit=available(type)[0];if(unit){state.selected=i.id;renderDetails();const checkbox=document.querySelector(`.unit-option input[value="${unit.call}"]`);if(checkbox){checkbox.checked=true;document.querySelector('.dispatch-action').click();}}}}});
   $('regionName').textContent=DATA.region.name;
   $('mapSource').textContent=`Kartengrundlage: ${DATA.source} · Routing: ${DATA.routingSource} · © OpenStreetMap contributors`;
   render();showMenu();

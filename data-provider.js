@@ -31,9 +31,9 @@
     { id: 'thw-kiel', name: 'THW Ortsverband Kiel', shortName: 'Flughafen', type: 'rescue', place: 'Kiel', lat: 54.3790, lon: 10.1450 }
   ];
   const hospitals = [
-    { id: 'uksh-kiel', name: 'Universitätsklinikum Schleswig-Holstein · Campus Kiel', place: 'Kiel', lat: 54.3417, lon: 10.1222, capabilities: ['trauma', 'stroke', 'cardiac'] },
-    { id: 'imland-rendsburg', name: 'imland Klinik Rendsburg', place: 'Rendsburg', lat: 54.3007, lon: 9.6671, capabilities: ['trauma', 'cardiac'] },
-    { id: 'klinik-preetz', name: 'Klinik Preetz', place: 'Preetz', lat: 54.2354, lon: 10.2779, capabilities: ['trauma'] }
+    { id: 'uksh-kiel', name: 'Universitätsklinikum Schleswig-Holstein · Campus Kiel', place: 'Kiel', lat: 54.3417, lon: 10.1222, capabilities: ['trauma', 'stroke', 'cardiac'], beds: 8 },
+    { id: 'imland-rendsburg', name: 'imland Klinik Rendsburg', place: 'Rendsburg', lat: 54.3007, lon: 9.6671, capabilities: ['trauma', 'cardiac'], beds: 4 },
+    { id: 'klinik-preetz', name: 'Klinik Preetz', place: 'Preetz', lat: 54.2354, lon: 10.2779, capabilities: ['trauma'], beds: 3 }
   ];
   let external = null;
   let routing = { mode: 'offline', endpoint: '' };
@@ -44,12 +44,14 @@
     return 6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
   }
   function coordinates(place) { return region.places[place] || region.center; }
-  function route(from, to, trafficFactor = 1) {
+  function route(from, to, trafficFactor = 1, context = {}) {
     const km = distanceKm(from, to);
-    return { distanceKm: Math.round(km * 10) / 10, etaMinutes: Math.max(2, Math.round((km / 0.72) * trafficFactor)), source: routing.mode };
+    const timeFactor = context.hour >= 7 && context.hour < 9 || context.hour >= 16 && context.hour < 18 ? 1.18 : 1;
+    const weatherFactor = context.weather === 'Schneefall' ? 1.2 : context.weather === 'Nebel' ? 1.12 : 1;
+    return { distanceKm: Math.round(km * 10) / 10, etaMinutes: Math.max(2, Math.round((km / 0.72) * trafficFactor * timeFactor * weatherFactor)), source: routing.mode };
   }
-  async function routeAsync(from, to, trafficFactor = 1) {
-    const fallback = route(from, to, trafficFactor);
+  async function routeAsync(from, to, trafficFactor = 1, context = {}) {
+    const fallback = route(from, to, trafficFactor, context);
     if (routing.mode !== 'external') return fallback;
     try {
       const url = `${routing.endpoint.replace(/\/$/, '')}?from=${encodeURIComponent(`${from.lat},${from.lon}`)}&to=${encodeURIComponent(`${to.lat},${to.lon}`)}`;
@@ -86,6 +88,12 @@
       return units.filter(unit => unit.type === type && unit.status === 'Bereit')
         .map(unit => ({ unit, route: route(this.station(unit.stationId) || region.center, target) }))
         .sort((a, b) => a.route.distanceKm - b.route.distanceKm);
+    },
+    suitableHospitals(incident, from) {
+      const need = incident.hospitalCapability || (incident.type === 'med' && incident.priority === 1 ? 'cardiac' : 'trauma');
+      return hospitals.filter(hospital => hospital.capabilities.includes(need) && hospital.beds > 0)
+        .map(hospital => ({ hospital, route: route(from || region.center, hospital, 1) }))
+        .sort((a, b) => a.route.etaMinutes - b.route.etaMinutes);
     },
     configureRouting(endpoint) {
       routing = endpoint ? { mode: 'external', endpoint } : { mode: 'offline', endpoint: '' };

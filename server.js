@@ -19,13 +19,21 @@ const mimeTypes = {
 };
 
 const server = http.createServer((req, res) => {
-  const pathname = new URL(req.url, `http://${req.headers.host}`).pathname;
+  let pathname;
+  try {
+    pathname = new URL(req.url, `http://${req.headers.host || 'localhost'}`).pathname;
+  } catch (_) {
+    res.writeHead(400);
+    res.end('Bad request');
+    return;
+  }
   let filePath = pathname === '/' ? '/index.html' : pathname;
   filePath = path.normalize(filePath).replace(/^\/+/, '');
 
   const resolvePath = path.join(root, filePath);
 
-  if (!resolvePath.startsWith(root)) {
+  const relativePath = path.relative(root, resolvePath);
+  if (relativePath.startsWith('..' + path.sep) || path.isAbsolute(relativePath)) {
     res.writeHead(403);
     res.end('Forbidden');
     return;
