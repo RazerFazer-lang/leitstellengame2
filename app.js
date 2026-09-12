@@ -22,7 +22,7 @@ const WEATHER = [
 ];
 const KEY = 'leitstelle-nord-save-v2';
 const emptyState = () => ({
-  minute:360, score:0, closed:0, calls:0, answered:0, answerSeconds:0, selected:null, filter:'all',
+  minute:360, score:0, closed:0, calls:0, answered:0, answerSeconds:0, selected:null, filter:'all', started:false,
   weather:0, incidents:[], logs:[], units:FLEET.map(([call,type,model,base])=>({call,type,model,base,status:'Bereit',incidentId:null,eta:0}))
 });
 let state = emptyState();
@@ -66,7 +66,7 @@ function recommendations(incident) {
   if(incident.priority===1 || incident.persons>1) needed=[...needed,'med'];
   if(incident.hazard==='hazard' && !needed.includes('fire')) needed.push('fire');
   if(incident.hazard==='weapon' && !needed.includes('police')) needed.push('police');
-  return needed;
+  return [...new Set(needed)];
 }
 function available(type) { return state.units.filter(unit=>unit.type===type && unit.status==='Bereit'); }
 function renderQueue() {
@@ -161,7 +161,7 @@ function tick(){
 function newAutoCall(){if(state.incidents.filter(i=>i.status!=='closed').length>=8)return;const i=makeIncident();state.incidents.push(i);state.selected=i.id;state.calls++;log(`Neuer Notruf: ${i.label} in ${i.district} · ${priorityName(i.priority)}.`);notify(`Neuer Notruf ${i.id}: ${i.label}`);tone(880);save();render();}
 function openCallDialog(){const dialog=$('callDialog');if(dialog.showModal)dialog.showModal();else dialog.setAttribute('open','');}
 function hasSavedState(){
-  try { const value=JSON.parse(localStorage.getItem(KEY)||'null'); return value && Array.isArray(value.units) && Array.isArray(value.incidents); } catch (_) { return false; }
+  try { const value=JSON.parse(localStorage.getItem(KEY)||'null'); return Boolean(value && value.started===true && Array.isArray(value.units) && Array.isArray(value.incidents)); } catch (_) { return false; }
 }
 function resetShift(){state=emptyState();seed();render();}
 function showMenu(){
@@ -173,12 +173,15 @@ function showMenu(){
 }
 function startSimulation(useSave){
   if(!useSave)resetShift();
+  state.started=true;
+  save();
   simulationStarted=true; $('mainMenu').classList.add('hidden');
   if(!tickTimer)tickTimer=setInterval(tick,1000);
   render();
 }
 function setup(){
   try{const stored=JSON.parse(localStorage.getItem(KEY)||'null');if(stored&&Array.isArray(stored.units)&&Array.isArray(stored.incidents)){state={...emptyState(),...stored,units:stored.units,incidents:stored.incidents};}}catch(_){state=emptyState();}
+  if(typeof state.started!=='boolean')state.started=Boolean(state.score||state.closed||state.answered||state.minute>360||state.incidents.some(i=>i&&i.status&&i.status!=='new'));
   state.units=Array.isArray(state.units)?state.units.map((unit,index)=>({...unit,call:unit.call||FLEET[index]?.[0]||`U-${index+1}`,type:unit.type||FLEET[index]?.[1]||'rescue',status:unit.status||'Bereit',incidentId:unit.incidentId||null,eta:Number.isFinite(unit.eta)?unit.eta:0,capability:unit.capability||FLEET[index]?.[4]||'Standard'})):emptyState().units;
   state.incidents=Array.isArray(state.incidents)?state.incidents.filter(i=>i&&typeof i==='object'&&TYPES[i.type]):[];
   state.minute=Number.isFinite(state.minute)?Math.max(360,state.minute):360;
@@ -189,7 +192,7 @@ function setup(){
   $('districtSelect').innerHTML=Object.keys(DISTRICTS).map(name=>`<option>${name}</option>`).join('');
   document.querySelectorAll('.filter').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('.filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');state.filter=btn.dataset.filter;render();}));
   $('newCall').addEventListener('click',openCallDialog);$('radioButton').addEventListener('click',()=>{$('radioLog').focus();notify('Funkverkehr fokussiert.');});
-  $('soundToggle').addEventListener('click',()=>{sound=!sound;render();});$('newShift').addEventListener('click',()=>{if(confirm('Aktuelle Schicht wirklich zurücksetzen?')){state=emptyState();seed();render();notify('Neue Schicht gestartet.');}});
+  $('soundToggle').addEventListener('click',()=>{sound=!sound;render();});$('newShift').addEventListener('click',()=>{if(confirm('Aktuelle Schicht wirklich zurücksetzen?')){startSimulation(false);notify('Neue Schicht gestartet.');}});
   $('startShift').addEventListener('click',()=>startSimulation(false));$('continueShift').addEventListener('click',()=>{if(hasSavedState())startSimulation(true);});
   $('helpButton').addEventListener('click',()=>$('helpDialog').showModal());$('settingsButton').addEventListener('click',()=>{$('menuSoundToggle').checked=sound;$('settingsDialog').showModal();});
   $('menuSoundToggle').addEventListener('change',event=>{sound=event.currentTarget.checked;render();});document.querySelectorAll('[data-close-dialog]').forEach(button=>button.addEventListener('click',()=>button.closest('dialog').close()));

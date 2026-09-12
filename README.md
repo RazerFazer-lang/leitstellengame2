@@ -10,7 +10,7 @@ node server.js
 
 Anschließend `http://localhost:8000` öffnen. Es gibt keine externe API, keine Datenbank und keine Abhängigkeiten; `server.js` liefert die statischen Dateien aus.
 
-Beim ersten Öffnen erscheint das Startmenü. **Neue Schicht starten** legt einen frischen Dienst mit drei Ausgangslagen an. **Schicht fortsetzen** lädt den automatisch im Browser gespeicherten Spielstand; ist keiner vorhanden, bleibt die Option deaktiviert. Spielhilfe und Einstellungen sind direkt im Menü erreichbar. Der Spielstand liegt ausschließlich in `localStorage` dieses Browsers.
+Beim ersten Öffnen erscheint das Startmenü. **Neue Schicht starten** legt einen frischen Dienst mit drei Ausgangslagen an. Diese Ausgangslagen werden für den neuen Dienst vorbereitet, zählen aber noch nicht als fortsetzbarer Spielstand; erst nach dem tatsächlichen Start der Schicht wird **Schicht fortsetzen** aktiviert. **Schicht fortsetzen** lädt danach den automatisch im Browser gespeicherten Spielstand. Spielhilfe und Einstellungen sind direkt im Menü erreichbar. Der Spielstand liegt ausschließlich in `localStorage` dieses Browsers.
 
 ## Spielablauf
 
