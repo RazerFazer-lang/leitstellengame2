@@ -2,6 +2,33 @@
 
 Eine lokal laufende, deutschsprachige Leitstellensimulation im Browser. Du übernimmst eine Schicht in einer integrierten Leitstelle, nimmst Notrufe auf, bewertest die Lage und disponierst Feuerwehr, Rettungsdienst, Polizei und technische Hilfe.
 
+## Architektur- und Datenphase (2–8)
+
+Die aktuelle Phase ergänzt eine echte, aber bewusst begrenzte Geodaten-Grundlage für
+Schleswig-Holstein (Kiel, Rendsburg, Eckernförde und weitere Orte) sowie verifizierbare
+Station- und Klinik-Entitäten. `data-provider.js` kapselt Orte, Stationen, Kliniken,
+Entfernungen, ETA und die Auswahl der nächstgelegenen verfügbaren Fachkomponente.
+Die Standardkarte ist eine regionale Orientierungskarte, kein Navigationssystem.
+`data/region.geojson` ist eine kleine, lokale Seed-Datei und wird nicht als Live-Datenquelle
+behauptet.
+
+Der Provider kann optional über `loadGeoJSON(url)` eine GeoJSON-Datei laden oder über
+`configureRouting(endpoint)` einen eigenen Routing-Dienst konfigurieren. Das optionale
+Endpoint erhält `?from=lat,lon&to=lat,lon` und sollte JSON mit
+`routes[0].distance` (Meter) und `routes[0].duration` (Sekunden) liefern. Beide Wege sind
+opt-in; ohne Konfiguration bleibt die Anwendung vollständig offline und zeigt
+„Offline-Saatdaten“ sowie „Offline-Luftlinie · ETA-Schätzung“ an. Ein externer Dienst
+wird in dieser Version nicht automatisch kontaktiert.
+
+### OSM, Lizenz und Grenzen
+
+Für eigene GeoJSON-Dateien müssen Quelle, Lizenz und Aktualisierungsdatum dokumentiert
+werden. OpenStreetMap-Daten stehen unter der **ODbL**; bei abgeleiteten Daten ist eine
+sichtbare Attribution „© OpenStreetMap contributors“ und der Lizenzhinweis
+https://www.openstreetmap.org/copyright erforderlich. Die mitgelieferten Namen und
+Koordinaten sind nur Spiel-Saatdaten, nicht für Disposition, Navigation oder
+Echtbetrieb geeignet. Es gibt keine Live-Verkehrs-, Leitstellen- oder Klinikbelegung.
+
 ## Start
 
 ```bash

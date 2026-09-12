@@ -1,0 +1,11 @@
+{
+  "type": "FeatureCollection",
+  "name": "leitstelle-nord-seed",
+  "source": "OpenStreetMap-derived seed locations; verify before operational use",
+  "features": [
+    {"type":"Feature","properties":{"name":"Kiel","kind":"place"},"geometry":{"type":"Point","coordinates":[10.1228,54.3233]}},
+    {"type":"Feature","properties":{"name":"Rendsburg","kind":"place"},"geometry":{"type":"Point","coordinates":[9.6638,54.3064]}},
+    {"type":"Feature","properties":{"name":"Eckernförde","kind":"place"},"geometry":{"type":"Point","coordinates":[9.837,54.4681]}},
+    {"type":"Feature","properties":{"name":"UKSH Campus Kiel","kind":"hospital"},"geometry":{"type":"Point","coordinates":[10.1222,54.3417]}}
+  ]
+}

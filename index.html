@@ -54,8 +54,9 @@
       </aside>
 
       <section class="column center-column">
-        <div class="map-head"><div><p class="eyebrow">Ressourcenkarte</p><h2>Versorgungsgebiet</h2></div><span class="live"><i></i> LIVE</span></div>
+        <div class="map-head"><div><p class="eyebrow">Ressourcenkarte · <span id="regionName">Region</span></p><h2>Versorgungsgebiet</h2></div><span class="live" id="dataStatus"><i></i> OFFLINE-DATEN</span></div>
         <div id="map" class="map" aria-label="Interaktive Karte des Versorgungsgebietes"></div>
+        <p id="mapSource" class="map-source">Kartengrundlage: Offline-Saatdaten · Routing: lokale ETA-Schätzung · © OpenStreetMap contributors</p>
         <div class="legend"><span><i class="fire-dot"></i>Feuerwehr</span><span><i class="med-dot"></i>Rettung</span><span><i class="police-dot"></i>Polizei</span><span><i class="rescue-dot"></i>Technik</span><span><i class="unit-dot"></i>Einheit unterwegs</span></div>
         <div class="resource-board"><div class="section-heading compact"><div><p class="eyebrow">Statusboard</p><h2>Einheiten</h2></div><button class="text-button" id="radioButton">Funk öffnen <kbd>R</kbd></button></div><div id="resourceGrid"></div></div>
       </section>
@@ -75,6 +76,8 @@
         <label>Priorität<select name="priority"><option value="1">P1 · Lebensgefahr</option><option value="2" selected>P2 · Dringend</option><option value="3">P3 · Normal</option></select></label>
         <label>Ort / Straße<input name="location" placeholder="z. B. Hauptbahnhof, Gleis 4" required></label>
         <label>Ortsteil<select name="district" id="districtSelect"></select></label>
+        <label>Rückrufnummer<input name="callback" placeholder="z. B. 0431 112"></label>
+        <label>Annahmeweg<select name="channel"><option value="phone">Telefon 112</option><option value="app">Notruf-App</option><option value="radio">Funk / Streife</option></select></label>
         <label>Anrufer/in<input name="caller" placeholder="Name oder Rückrufnummer"></label>
         <label>Betroffene<input name="persons" type="number" min="1" max="99" value="1"></label>
         <label>Gefahrgut / Waffe<select name="hazard"><option value="none">Keine Hinweise</option><option value="hazard">Gefahrgut / Rauch</option><option value="weapon">Waffe / Gewalt</option></select></label>
@@ -91,6 +94,7 @@
     <div class="dialog-head"><div><p class="eyebrow">System</p><h2>Einstellungen</h2></div><button class="close" data-close-dialog aria-label="Schließen">×</button></div>
     <div class="info-content"><label class="setting-row"><span><strong>Akustische Hinweise</strong><small>Signaltöne bei Notrufen und Statuswechseln</small></span><input id="menuSoundToggle" type="checkbox" checked></label><p class="muted">Der Spielstand wird automatisch lokal im Browser gespeichert. Es werden keine Daten übertragen.</p></div>
   </dialog>
+  <script src="data-provider.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
