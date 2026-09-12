@@ -1,86 +1,71 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="de">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Leitstellen-Spiel</title>
-    <link rel="stylesheet" href="styles.css" />
-  </head>
-  <body>
-    <div class="app-shell">
-      <header class="topbar">
-        <div class="brand">
-          <div class="brand-mark" aria-hidden="true"></div>
-          <div>
-            <small>Deutschland</small>
-            <h1>Leitstellen-Command</h1>
-          </div>
-        </div>
-
-        <div class="header-metrics">
-          <div class="metric">
-            <div class="metric-label">Uhrzeit</div>
-            <div class="metric-value" id="clock">00:00</div>
-          </div>
-          <div class="metric">
-            <div class="metric-label">Schicht</div>
-            <div class="metric-value" id="shift">0h</div>
-          </div>
-          <div class="metric">
-            <div class="metric-label">Punktestand</div>
-            <div class="metric-value" id="score">0</div>
-          </div>
-          <div class="metric">
-            <div class="metric-label">Wetter</div>
-            <div class="metric-value" id="weather">Klar</div>
-          </div>
-        </div>
-
-        <div class="header-actions">
-          <button class="light-btn" id="soundToggle" type="button">Ton: An</button>
-          <button class="light-btn" id="syncButton" type="button">Lobby sync</button>
-        </div>
-      </header>
-
-      <div class="dashboard">
-        <aside class="panel">
-          <div class="panel-header">
-            <h2>Einsätze</h2>
-            <span class="badge" id="incidentCount">0 offen</span>
-          </div>
-          <div class="list-wrap">
-            <ul class="incident-list" id="incidentList"></ul>
-          </div>
-        </aside>
-
-        <main class="panel map-panel">
-          <div class="map-wrapper">
-            <div id="map" aria-label="Deutschland-Karte"></div>
-          </div>
-        </main>
-
-        <aside class="panel">
-          <div class="dispatch-panel">
-            <div class="dispatch-header">
-              <h3>Alarmzentrale</h3>
-              <span class="call-state" id="selectedRegion">Leitstelle</span>
-            </div>
-            <div id="incidentDetails"></div>
-          </div>
-
-          <div class="panel-header" style="padding-top: 0;">
-            <h2>Einheiten</h2>
-          </div>
-          <div class="resource-grid" id="resourceGrid"></div>
-
-          <div class="panel-header log-panel">
-            <h2>Funkverkehr</h2>
-          </div>
-          <ul class="log-list" id="radioLog"></ul>
-        </aside>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#08131d">
+  <title>Leitstelle Nord · Einsatzführung</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">✦</span><div><p class="eyebrow">Integrierte Leitstelle · Nord</p><h1>Einsatzführung</h1></div></div>
+      <div class="status-strip" aria-label="Schichtstatus">
+        <div><span class="eyebrow">Simulationszeit</span><strong id="clock">06:00</strong></div>
+        <div><span class="eyebrow">Schicht</span><strong id="shift">Frühdienst · 0:00</strong></div>
+        <div><span class="eyebrow">Wetter / Verkehr</span><strong id="conditions">Klar · frei</strong></div>
+        <div><span class="eyebrow">Bewertung</span><strong id="score">0</strong></div>
       </div>
-    </div>
+      <div class="top-actions"><button class="ghost" id="soundToggle">Ton an</button><button class="ghost" id="newShift">Neue Schicht</button></div>
+    </header>
 
-    <script src="app.js"></script>
-  </body>
+    <section class="kpi-row" aria-label="Schichtkennzahlen">
+      <article class="kpi"><span class="kpi-icon amber">!</span><div><span>Offene Einsätze</span><strong id="openCount">0</strong></div></article>
+      <article class="kpi"><span class="kpi-icon cyan">↗</span><div><span>Reaktionsquote</span><strong id="responseRate">100%</strong></div></article>
+      <article class="kpi"><span class="kpi-icon green">✓</span><div><span>Abgeschlossen</span><strong id="closedCount">0</strong></div></article>
+      <article class="kpi"><span class="kpi-icon violet">◈</span><div><span>Freie Fahrzeuge</span><strong id="freeCount">0</strong></div></article>
+      <div class="shortcut-hint"><kbd>N</kbd> Notruf · <kbd>R</kbd> Funk · <kbd>1–4</kbd> Disposition</div>
+    </section>
+
+    <div class="workspace">
+      <aside class="column queue-column">
+        <div class="section-heading"><div><p class="eyebrow">Lagebild</p><h2>Einsatzqueue</h2></div><span class="counter" id="queueCounter">0</span></div>
+        <div class="filters" role="group" aria-label="Einsatzfilter">
+          <button class="filter active" data-filter="all">Alle</button><button class="filter" data-filter="priority">Priorität</button><button class="filter" data-filter="mine">Dispo</button>
+        </div>
+        <div id="incidentList" class="incident-list" aria-live="polite"></div>
+        <button class="new-call-button" id="newCall">＋ Eingehenden Notruf erfassen <kbd>N</kbd></button>
+      </aside>
+
+      <section class="column center-column">
+        <div class="map-head"><div><p class="eyebrow">Ressourcenkarte</p><h2>Versorgungsgebiet</h2></div><span class="live"><i></i> LIVE</span></div>
+        <div id="map" class="map" aria-label="Interaktive Karte des Versorgungsgebietes"></div>
+        <div class="legend"><span><i class="fire-dot"></i>Feuerwehr</span><span><i class="med-dot"></i>Rettung</span><span><i class="police-dot"></i>Polizei</span><span><i class="rescue-dot"></i>Technik</span><span><i class="unit-dot"></i>Einheit unterwegs</span></div>
+        <div class="resource-board"><div class="section-heading compact"><div><p class="eyebrow">Statusboard</p><h2>Einheiten</h2></div><button class="text-button" id="radioButton">Funk öffnen <kbd>R</kbd></button></div><div id="resourceGrid"></div></div>
+      </section>
+
+      <aside class="column detail-column">
+        <div id="incidentDetails"></div>
+        <section class="radio-panel"><div class="section-heading compact"><div><p class="eyebrow">Kommunikation</p><h2>Funkverkehr</h2></div><span class="counter" id="logCount">0</span></div><ul id="radioLog" class="radio-log" aria-live="polite"></ul></section>
+      </aside>
+    </div>
+  </main>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <dialog id="callDialog" class="call-dialog">
+    <form method="dialog" id="callForm">
+      <div class="dialog-head"><div><p class="eyebrow">Telefonannahme · 112</p><h2>Eingehenden Notruf erfassen</h2></div><button value="cancel" class="close" aria-label="Schließen">×</button></div>
+      <div class="form-grid">
+        <label>Stichwort<select name="type" required><option value="med">Medizinischer Notfall</option><option value="fire">Brand / Rauch</option><option value="police">Polizeiliche Lage</option><option value="rescue">Technische Hilfe</option></select></label>
+        <label>Priorität<select name="priority"><option value="1">P1 · Lebensgefahr</option><option value="2" selected>P2 · Dringend</option><option value="3">P3 · Normal</option></select></label>
+        <label>Ort / Straße<input name="location" placeholder="z. B. Hauptbahnhof, Gleis 4" required></label>
+        <label>Ortsteil<select name="district" id="districtSelect"></select></label>
+        <label>Anrufer/in<input name="caller" placeholder="Name oder Rückrufnummer"></label>
+        <label class="wide">Angaben der anrufenden Person<textarea name="details" rows="3" placeholder="Was ist passiert? Wie viele Betroffene?"></textarea></label>
+      </div>
+      <div class="dialog-actions"><button value="cancel" class="ghost">Abbrechen</button><button value="default" class="primary">Einsatz anlegen</button></div>
+    </form>
+  </dialog>
+  <script src="app.js"></script>
+</body>
 </html>

@@ -1,603 +1,157 @@
-const state = {
-  tick: 0,
-  shift: 0,
-  score: 0,
-  weather: 'Klar',
-  selectedIncidentId: null,
-  incidents: [],
-  units: {
-    fire: { total: 14, busy: 0, label: 'Feuerwehr', fleets: ['ELW', 'LF 20', 'LF 10', 'RTW', 'GW-A'] },
-    police: { total: 12, busy: 0, label: 'Polizei', fleets: ['Streifenwagen', 'Einsatzwagen', 'SEK', 'Mannschaft'] },
-    med: { total: 15, busy: 0, label: 'Rettungsdienst', fleets: ['RTW', 'KTW', 'NEF', 'Notarzt'] },
-    rescue: { total: 8, busy: 0, label: 'Technische Hilfe', fleets: ['THW', 'Bergung', 'Gerätewagen', 'Funk'] }
-  },
-  log: []
+/* Leitstelle Nord - self contained browser simulation. */
+const DISTRICTS = {
+  Nordhafen:[16,18], Westend:[25,39], Altstadt:[43,30], Messe:[58,22], Ostpark:[75,28],
+  Südstadt:[31,67], Industrie:[55,59], Flughafen:[80,69], Vorstadt:[67,83], Klinikum:[45,82]
 };
-
-const syncMeta = {
-  storageKey: 'leitstellen-command-state',
-  channelName: 'leitstellen-command-sync',
-  tabId: `tab-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-  audioEnabled: true,
-  audioContext: null,
-  channel: null
+const TYPES = {
+  fire:{label:'Feuerwehr', color:'fire', words:['Gebäudebrand','Rauchentwicklung','Kfz-Brand']},
+  med:{label:'Rettungsdienst', color:'med', words:['Herzstillstand','Sturzverletzung','Atemnot']},
+  police:{label:'Polizei', color:'police', words:['Verkehrsunfall','Gewalttat','Einbruch']},
+  rescue:{label:'Technische Hilfe', color:'rescue', words:['Eingeklemmte Person','Sturmschaden','Gefahrgutlage']}
 };
-
-const districtInfo = {
-  Hamburg: { x: 170, y: 105 },
-  Bremen: { x: 160, y: 190 },
-  Berlin: { x: 500, y: 160 },
-  Hannover: { x: 270, y: 200 },
-  Dortmund: { x: 240, y: 295 },
-  Köln: { x: 170, y: 345 },
-  Frankfurt: { x: 330, y: 380 },
-  München: { x: 470, y: 500 },
-  Nürnberg: { x: 410, y: 430 },
-  Stuttgart: { x: 260, y: 470 },
-  Leipzig: { x: 425, y: 280 },
-  Rostock: { x: 600, y: 110 },
-  Saarbrücken: { x: 120, y: 450 },
-  Erfurt: { x: 420, y: 330 },
-  Magdeburg: { x: 460, y: 230 }
-};
-
-const weatherModes = ['Klar', 'Leicht bewölkt', 'Regen', 'Schneefall', 'Nebel'];
-
-const incidentTemplates = [
-  { type: 'fire', label: 'Gebäudebrand', summary: 'Rauchentwicklung in einer Wohnanlage, mehrere Personen in der Unterkunft' },
-  { type: 'fire', label: 'Waldbrand', summary: 'Brandbewegung im Waldgebiet mit starkem Wind und Sichtbehinderung' },
-  { type: 'fire', label: 'Kfz-Brand', summary: 'Fahrzeugbrand an Autobahn mit Gefahr durch angrenzende Tankstelle' },
-  { type: 'med', label: 'Schwerer Notfall', summary: 'Person mit Atemnot, Bewusstseinsstörung und Kreislaufproblemen' },
-  { type: 'med', label: 'Herzstillstand', summary: 'Reanimationsalarm mit vorausgegangener Ohnmacht und Schocklage' },
-  { type: 'med', label: 'Sturz mit Verletzung', summary: 'Person nach Sturz aus Höhe, Verdacht auf mehrere Verletzungen' },
-  { type: 'police', label: 'Gewalttat', summary: 'Auseinandersetzung in der Öffentlichkeit, Verdacht auf schwere Körperverletzung' },
-  { type: 'police', label: 'Einbruch', summary: 'Einbruchsdverdacht in Wohnhaus, Täter möglicherweise noch in der Nähe' },
-  { type: 'police', label: 'Verkehrsunfall', summary: 'Zusammenstoß auf Hauptstraße mit Personenschaden und Leitungsbrand' },
-  { type: 'rescue', label: 'Baustellenunfall', summary: 'Person im Gerüstbereich eingeklemmt, Absturzgefahr und Rettung erforderlich' },
-  { type: 'rescue', label: 'Kellerbrand', summary: 'Rauch im Kellerbereich mit eingeschlossener Person und elektrischer Anlage' },
-  { type: 'rescue', label: 'Technischer Einsatz', summary: 'Sperrung eines Bereichs wegen defekter Anlage und unklarer Lage' },
-  { type: 'fire', label: 'Industriebrand', summary: 'Feuer in Verarbeitungshalle mit brennenden Chemikalien und enger Lage' },
-  { type: 'police', label: 'Entführung', summary: 'Alarm wegen möglicher Entführung mit potenzieller unmittelbarer Gefahr' },
-  { type: 'med', label: 'Schwangerschaftsnotfall', summary: 'Schwangere Person mit Blutung und Kreislaufproblemen' } 
+const FLEET = [
+  ['F-11','fire','HLF 20','Nordwache'],['F-21','fire','DLK 23','Westwache'],['F-31','fire','LF 20','Ostwache'],
+  ['R-11','med','RTW','Nordwache'],['R-12','med','RTW','Südwache'],['R-21','med','NEF','Klinikum'],
+  ['P-11','police','Streifenwagen','Altstadt'],['P-12','police','Streifenwagen','Ostpark'],['P-21','police','Einsatzwagen','Westend'],
+  ['T-11','rescue','RW','Industrie'],['T-21','rescue','GW-Technik','Flughafen']
 ];
-
-const districtNames = Object.keys(districtInfo);
-
-const els = {
-  clock: document.getElementById('clock'),
-  score: document.getElementById('score'),
-  shift: document.getElementById('shift'),
-  weather: document.getElementById('weather'),
-  incidentList: document.getElementById('incidentList'),
-  incidentDetails: document.getElementById('incidentDetails'),
-  map: document.getElementById('map'),
-  radioLog: document.getElementById('radioLog'),
-  resourceGrid: document.getElementById('resourceGrid'),
-  selectedRegion: document.getElementById('selectedRegion'),
-  incidentCount: document.getElementById('incidentCount'),
-  soundToggle: document.getElementById('soundToggle'),
-  syncButton: document.getElementById('syncButton')
-};
-
-function formatClock(totalMinutes) {
-  const hours = Math.floor(totalMinutes / 60) % 24;
-  const minutes = totalMinutes % 60;
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+const WEATHER = [
+  {name:'Klar', traffic:'frei', factor:1, icon:'☀'}, {name:'Bewölkt', traffic:'normal', factor:1.1, icon:'☁'},
+  {name:'Regen', traffic:'zäh', factor:1.35, icon:'☂'}, {name:'Nebel', traffic:'zäh', factor:1.5, icon:'◌'},
+  {name:'Schneefall', traffic:'kritisch', factor:1.7, icon:'❄'}
+];
+const KEY = 'leitstelle-nord-save-v2';
+const emptyState = () => ({
+  minute:360, score:0, closed:0, calls:0, answered:0, selected:null, filter:'all',
+  weather:0, incidents:[], logs:[], units:FLEET.map(([call,type,model,base])=>({call,type,model,base,status:'Bereit',incidentId:null,eta:0}))
+});
+let state = emptyState();
+let sound = true;
+let toastTimer;
+const $ = id => document.getElementById(id);
+const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+const clock = () => `${String(Math.floor(state.minute / 60) % 24).padStart(2,'0')}:${String(state.minute % 60).padStart(2,'0')}`;
+const typeName = type => TYPES[type]?.label || type;
+const priorityName = value => value === 1 ? 'P1 · Lebensgefahr' : value === 2 ? 'P2 · Dringend' : 'P3 · Normal';
+const stateName = value => ({new:'Neu', dispatched:'Dispo bestätigt', enroute:'Anfahrt', scene:'Vor Ort', transport:'Transport', returning:'Rückfahrt', closed:'Abgeschlossen'}[value] || value);
+const log = text => { state.logs.unshift({time:clock(),text}); state.logs=state.logs.slice(0,18); };
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (_) {} };
+const notify = text => { const node=$('toast'); node.textContent=text; node.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>node.classList.remove('show'),3200); };
+function tone(frequency=640) {
+  if (!sound) return;
+  const C=window.AudioContext||window.webkitAudioContext; if (!C) return;
+  const ctx=new C(), osc=ctx.createOscillator(), gain=ctx.createGain();
+  osc.frequency.value=frequency; osc.type='sine'; gain.gain.value=.035; gain.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.22);
+  osc.connect(gain).connect(ctx.destination); osc.start(); osc.stop(ctx.currentTime+.22);
 }
-
-function randomPriority() {
-  const roll = Math.random();
-  if (roll < 0.38) return 1;
-  if (roll < 0.76) return 2;
-  return 3;
+function makeIncident(overrides={}) {
+  const type=overrides.type || Object.keys(TYPES)[Math.floor(Math.random()*4)];
+  const district=overrides.district || Object.keys(DISTRICTS)[Math.floor(Math.random()*10)];
+  const priority=Number(overrides.priority || (Math.random()<.25?1:Math.random()<.65?2:3));
+  const label=overrides.label || TYPES[type].words[Math.floor(Math.random()*TYPES[type].words.length)];
+  return {id:`E-${Date.now().toString(36)}-${Math.random().toString(16).slice(2,6)}`,type,label,priority,district,
+    location:overrides.location || `${district}, ${['Hauptstraße','Bahnhofstraße','Ring','Parkweg'][Math.floor(Math.random()*4)]}`, caller:overrides.caller || 'Unbekannt',
+    details:overrides.details || 'Lage wird durch Anrufende weiter erkundet.',status:'new',created:state.minute,
+    age:0, eta:0, units:[], followUp:false, escalated:false};
 }
-
-function randomDistrict() {
-  return districtNames[Math.floor(Math.random() * districtNames.length)];
+function seed() {
+  state.incidents=[makeIncident({type:'med',priority:1,district:'Klinikum',label:'Herzstillstand',location:'Klinikum, Notaufnahme',details:'Reanimation läuft, Ersthelfer vor Ort.'}),makeIncident({type:'fire',priority:2,district:'Industrie',label:'Rauchentwicklung',details:'Dichter Rauch aus Lagerhalle, keine Personen bestätigt.'}),makeIncident({type:'police',priority:3,district:'Altstadt',label:'Verkehrsunfall',details:'Zwei Fahrzeuge, Blechschaden, Verkehr stockt.'})];
+  state.selected=state.incidents[0].id; state.logs=[]; log('Schicht übernommen. Alle Funkkreise sind besetzt.'); save();
 }
-
-function getRandomVehicle(kind) {
-  const fleet = state.units[kind].fleets;
-  return fleet[Math.floor(Math.random() * fleet.length)];
+function recommendations(incident) {
+  const needed=incident.type==='med'?['med','med']:incident.type==='fire'?['fire','fire']:incident.type==='police'?['police']:['rescue','med'];
+  return needed.filter((type,index)=>index===needed.indexOf(type) || incident.priority===1);
 }
-
-function makeIncident() {
-  const template = incidentTemplates[Math.floor(Math.random() * incidentTemplates.length)];
-  const district = randomDistrict();
-  return {
-    id: `einsatz-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`,
-    type: template.type,
-    label: template.label,
-    summary: template.summary,
-    district,
-    priority: randomPriority(),
-    wait: 0,
-    assigned: [],
-    travel: 0,
-    timer: 90 + Math.random() * 120,
-    vehicleHint: template.type,
-    createdAt: state.tick
-  };
+function available(type) { return state.units.filter(unit=>unit.type===type && unit.status==='Bereit'); }
+function renderQueue() {
+  const list=$('incidentList');
+  let items=state.incidents.filter(i=>i.status!=='closed');
+  if(state.filter==='priority') items.sort((a,b)=>a.priority-b.priority||b.age-a.age);
+  else if(state.filter==='mine') items=items.filter(i=>i.units.length);
+  else items.sort((a,b)=>a.priority-b.priority||b.age-a.age);
+  $('queueCounter').textContent=state.incidents.filter(i=>i.status!=='closed').length;
+  list.innerHTML=items.length ? items.map(i=>`<article class="incident ${i.id===state.selected?'active':''}" data-id="${i.id}" data-priority="${i.priority}">
+    <div class="incident-top"><div class="incident-title"><i class="type-dot ${TYPES[i.type].color}"></i>${esc(i.label)}</div><span class="priority p${i.priority}">P${i.priority}</span></div>
+    <div class="incident-meta">${esc(i.id)} · ${esc(i.district)} · ${i.age} min</div><p class="incident-summary">${esc(i.details)}</p><span class="state">${stateName(i.status)}${i.units.length?` · ${i.units.length} Einh.`:''}</span></article>`).join('') :
+    '<div class="detail-empty"><div><strong>Keine offenen Einsätze</strong><br><span>Die Lage ist ruhig. Neue Notrufe erscheinen automatisch.</span></div></div>';
+  list.querySelectorAll('[data-id]').forEach(node=>node.addEventListener('click',()=>{state.selected=node.dataset.id;render();}));
 }
-
-function ensureAudio() {
-  const AudioCtor = window.AudioContext || window.webkitAudioContext;
-  if (!AudioCtor) return null;
-  if (!syncMeta.audioContext) {
-    syncMeta.audioContext = new AudioCtor();
-  }
-  if (syncMeta.audioContext.state === 'suspended') {
-    syncMeta.audioContext.resume();
-  }
-  return syncMeta.audioContext;
-}
-
-function playTone({ frequency = 880, duration = 0.22, type = 'sine', volume = 0.04, delay = 0 }) {
-  if (!syncMeta.audioEnabled) return;
-  const ctx = ensureAudio();
-  if (!ctx) return;
-
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  const start = ctx.currentTime + delay;
-
-  osc.type = type;
-  osc.frequency.setValueAtTime(frequency, start);
-  gain.gain.setValueAtTime(volume, start);
-  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.start(start);
-  osc.stop(start + duration);
-}
-
-function playDispatchTone() {
-  playTone({ frequency: 880, duration: 0.18, type: 'square', volume: 0.04 });
-  setTimeout(() => playTone({ frequency: 660, duration: 0.18, type: 'square', volume: 0.04 }), 120);
-}
-
-function playSirenBurst() {
-  playTone({ frequency: 1200, duration: 0.16, type: 'sawtooth', volume: 0.035 });
-  setTimeout(() => playTone({ frequency: 900, duration: 0.14, type: 'sawtooth', volume: 0.03 }), 120);
-}
-
-function addLog(entry) {
-  state.log.unshift(entry);
-  state.log = state.log.slice(0, 8);
-  els.radioLog.innerHTML = state.log.map(log => `<li class="log-entry"><strong>${log.time}</strong> ${log.text}</li>`).join('');
-}
-
-function getSnapshot() {
-  return {
-    tick: state.tick,
-    shift: state.shift,
-    score: state.score,
-    weather: state.weather,
-    selectedIncidentId: state.selectedIncidentId,
-    incidents: state.incidents,
-    units: state.units,
-    log: state.log,
-    _meta: { updatedAt: Date.now(), tabId: syncMeta.tabId }
-  };
-}
-
-function persistState() {
-  try {
-    const payload = getSnapshot();
-    localStorage.setItem(syncMeta.storageKey, JSON.stringify(payload));
-    if (window.BroadcastChannel) {
-      const channel = syncMeta.channel || new BroadcastChannel(syncMeta.channelName);
-      syncMeta.channel = channel;
-      channel.postMessage(payload);
-    }
-  } catch (error) {
-    console.warn('Local sync unavailable:', error);
-  }
-}
-
-function hydrateState(payload) {
-  if (!payload || typeof payload !== 'object') return;
-  if (payload._meta && payload._meta.tabId === syncMeta.tabId) return;
-
-  state.tick = Number(payload.tick ?? state.tick);
-  state.shift = Number(payload.shift ?? state.shift);
-  state.score = Number(payload.score ?? state.score);
-  state.weather = payload.weather || state.weather;
-  state.selectedIncidentId = payload.selectedIncidentId ?? null;
-  state.incidents = Array.isArray(payload.incidents) ? payload.incidents : [];
-  state.units = payload.units ? {
-    fire: { ...state.units.fire, ...(payload.units.fire || {}) },
-    police: { ...state.units.police, ...(payload.units.police || {}) },
-    med: { ...state.units.med, ...(payload.units.med || {}) },
-    rescue: { ...state.units.rescue, ...(payload.units.rescue || {}) }
-  } : state.units;
-  state.log = Array.isArray(payload.log) ? payload.log : [];
-}
-
-function restoreRemoteState() {
-  try {
-    const raw = localStorage.getItem(syncMeta.storageKey);
-    if (!raw) return;
-    hydrateState(JSON.parse(raw));
-  } catch (error) {
-    console.warn('No persisted state found');
-  }
-}
-
-function handlePeerState(event) {
-  const payload = event && event.data ? event.data : event;
-  if (!payload || !payload._meta) return;
-  hydrateState(payload);
-  render();
-}
-
-function setUpSync() {
-  if (window.BroadcastChannel) {
-    syncMeta.channel = new BroadcastChannel(syncMeta.channelName);
-    syncMeta.channel.onmessage = handlePeerState;
-  }
-  window.addEventListener('storage', (event) => {
-    if (event.key === syncMeta.storageKey && event.newValue) {
-      try {
-        handlePeerState(JSON.parse(event.newValue));
-      } catch (error) {
-        console.warn('Unable to parse local sync payload');
-      }
-    }
-  });
-}
-
-function updateIncidentCount() {
-  els.incidentCount.textContent = `${state.incidents.length} offen`;
-}
-
-function renderResources() {
-  const resourceEntries = [
-    ['Feuerwehr', 'fire'],
-    ['Polizei', 'police'],
-    ['Rettungsdienst', 'med'],
-    ['Technische Hilfe', 'rescue']
-  ];
-
-  els.resourceGrid.innerHTML = resourceEntries.map(([label, key]) => {
-    const unit = state.units[key];
-    const free = unit.total - unit.busy;
-    const statusClass = free > 0 ? 'status-available' : 'status-busy';
-    const statusLabel = free > 0 ? 'bereit' : 'gebucht';
-    return `
-      <div class="resource-card">
-        <div class="resource-name">
-          <span class="dot ${key}"></span>
-          <span>${label}</span>
-        </div>
-        <div style="display:flex;gap:10px;align-items:center;">
-          <span class="status-pill ${statusClass}">${statusLabel}</span>
-          <span class="resource-count ${unit.busy ? 'busy' : ''}">${free}</span>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-function renderIncidents() {
-  if (!state.incidents.length) {
-    els.incidentList.innerHTML = '<li class="incident-item"><p class="incident-summary">Keine offenen Einsätze. Die Leitstelle wartet auf neue Anrufe.</p></li>';
-    return;
-  }
-
-  const sorted = [...state.incidents].sort((a, b) => b.priority - a.priority || a.wait - b.wait);
-  els.incidentList.innerHTML = sorted.map(incident => {
-    const active = incident.id === state.selectedIncidentId ? 'active' : '';
-    return `
-      <li class="incident-item ${active}" data-id="${incident.id}">
-        <div class="incident-topline">
-          <span class="incident-type"><span class="dot ${incident.type}"></span>${incident.label}</span>
-          <span class="priority-label priority-${incident.priority}">P${incident.priority}</span>
-        </div>
-        <div class="incident-meta">
-          <span>${incident.district}</span>
-          <span>${Math.max(0, Math.ceil(incident.timer - incident.travel))}s</span>
-        </div>
-        <p class="incident-summary">${incident.summary}</p>
-      </li>
-    `;
-  }).join('');
-
-  document.querySelectorAll('.incident-item[data-id]').forEach(item => {
-    item.addEventListener('click', () => {
-      state.selectedIncidentId = item.dataset.id;
-      render();
-    });
-  });
-}
-
-function getPriorityLabel(priority) {
-  if (priority === 1) return 'Notfall';
-  if (priority === 2) return 'Akut';
-  return 'Normal';
-}
-
-function formatVehicleList(assigned) {
-  if (!assigned || !assigned.length) return 'Noch nicht zugewiesen';
-  return assigned.map(name => `${name} (${state.units[name]?.label || name})`).join(', ');
-}
-
 function renderDetails() {
-  const current = state.incidents.find(i => i.id === state.selectedIncidentId) || state.incidents[0];
-  if (!current) {
-    els.incidentDetails.innerHTML = `
-      <div class="dispatch-header">
-        <h3>Keine Auswahl</h3>
-      </div>
-      <div class="detail-card">
-        <div class="detail-line"><span>Leitstelle</span><span class="detail-value">Wartet</span></div>
-      </div>
-    `;
-    els.selectedRegion.textContent = 'Leitstelle';
-    return;
-  }
-
-  state.selectedIncidentId = current.id;
-  els.selectedRegion.textContent = `${current.district} · ${current.label}`;
-
-  els.incidentDetails.innerHTML = `
-    <div class="dispatch-header">
-      <h3>${current.label}</h3>
-      <span class="status-pill ${current.assigned.length ? 'status-busy' : 'status-available'}">${current.assigned.length ? 'im Einsatz' : 'offen'}</span>
-    </div>
-    <div class="detail-card">
-      <div class="detail-line"><span>Ort</span><span class="detail-value">${current.district}</span></div>
-      <div class="detail-line"><span>Priorität</span><span class="detail-value">${getPriorityLabel(current.priority)}</span></div>
-      <div class="detail-line"><span>Verbleibende Zeit</span><span class="detail-value">${Math.max(0, Math.ceil(current.timer - current.travel))} s</span></div>
-      <div class="detail-line"><span>Zuweisung</span><span class="detail-value">${formatVehicleList(current.assigned)}</span></div>
-      <div class="detail-line"><span>Beschreibung</span><span class="detail-value">${current.summary}</span></div>
-    </div>
-    <div class="action-grid">
-      <button class="action-btn ${current.type === 'fire' ? 'fire' : ''}" data-action="fire"><strong>Feuerwehr</strong><small>${state.units.fire.total - state.units.fire.busy} verfügbar</small></button>
-      <button class="action-btn ${current.type === 'police' ? 'police' : ''}" data-action="police"><strong>Polizei</strong><small>${state.units.police.total - state.units.police.busy} verfügbar</small></button>
-      <button class="action-btn ${current.type === 'med' ? 'med' : ''}" data-action="med"><strong>Rettung</strong><small>${state.units.med.total - state.units.med.busy} verfügbar</small></button>
-      <button class="action-btn ${current.type === 'rescue' ? 'rescue' : ''}" data-action="rescue"><strong>Technik</strong><small>${state.units.rescue.total - state.units.rescue.busy} verfügbar</small></button>
-    </div>
-  `;
-
-  document.querySelectorAll('[data-action]').forEach(btn => {
-    btn.addEventListener('click', () => assignUnit(btn.dataset.action));
-  });
+  const i=state.incidents.find(item=>item.id===state.selected) || state.incidents.find(item=>item.status!=='closed');
+  if(!i){ $('incidentDetails').innerHTML='<div class="detail-empty"><div><strong>Bereit für den nächsten Notruf</strong><br><span>Wähle einen Einsatz aus der Queue.</span></div></div>'; return; }
+  state.selected=i.id;
+  const rec=recommendations(i), assigned=i.units.map(id=>state.units.find(u=>u.call===id)).filter(Boolean);
+  const candidates=state.units.filter(u=>u.status==='Bereit');
+  const actionDisabled=i.status==='closed'||i.status==='returning'||i.status==='transport';
+  $('incidentDetails').innerHTML=`<section class="detail-card">
+    <div class="detail-header"><div><p class="eyebrow">${esc(i.id)} · ${priorityName(i.priority)}</p><h2>${esc(i.label)}</h2><span class="state">${stateName(i.status)}</span></div><i class="type-dot ${TYPES[i.type].color}"></i></div>
+    <div class="detail-facts"><div class="fact"><span>Ort</span><strong>${esc(i.location)}</strong></div><div class="fact"><span>Anrufer/in</span><strong>${esc(i.caller)}</strong></div><div class="fact"><span>Ortsteil · Eingang</span><strong>${esc(i.district)} · ${clockFor(i.created)}</strong></div><div class="fact"><span>Einheiten</span><strong>${assigned.length||'—'}</strong></div></div>
+    <p class="detail-description">${esc(i.details)}</p>
+    <div class="recommendation"><strong>Vorschlag Leitstelle</strong><br>${rec.map(typeName).join(' + ')}${i.priority===1?' · Sonderrechte anfordern':''}</div>
+    <div class="unit-picker"><p class="eyebrow">Manuelle Disposition · freie Einheiten</p>${candidates.length?candidates.map(u=>`<label class="unit-option"><input type="checkbox" value="${u.call}" ${i.units.includes(u.call)?'checked':''}><span><strong>${u.call}</strong> · ${u.model}</span><small>${u.base}</small></label>`).join(''):'<span class="incident-meta">Keine passenden Einheiten frei.</span>'}</div>
+    <button class="primary dispatch-action" ${actionDisabled?'disabled':''}>${i.units.length?'Disposition aktualisieren':'Einheiten alarmieren'} <kbd>1–4</kbd></button>
+    <div class="detail-actions"><button class="ghost follow-up" ${actionDisabled?'disabled':''}>＋ Rückfrage / Folgeeinsatz</button><button class="ghost escalate danger" ${i.escalated||actionDisabled?'disabled':''}>⚠ Eskalieren</button></div>
+  </section>`;
+  $('incidentDetails').querySelector('.dispatch-action')?.addEventListener('click',()=>dispatch(i));
+  $('incidentDetails').querySelector('.follow-up')?.addEventListener('click',()=>followUp(i));
+  $('incidentDetails').querySelector('.escalate')?.addEventListener('click',()=>escalate(i));
 }
-
-function assignUnit(kind) {
-  const incident = state.incidents.find(i => i.id === state.selectedIncidentId) || state.incidents[0];
-  if (!incident) return;
-
-  if (incident.assigned.includes(kind)) {
-    addLog({ time: formatClock(state.tick), text: `Für ${incident.label} ist ${state.units[kind].label} bereits im Einsatz.` });
-    return;
-  }
-
-  const unit = state.units[kind];
-  if (!unit || unit.total - unit.busy <= 0) {
-    addLog({ time: formatClock(state.tick), text: `Für ${kind.toUpperCase()} liegen keine freien Fahrzeuge vor.` });
-    return;
-  }
-
-  incident.assigned.push(kind);
-  incident.travel = 0;
-  unit.busy += 1;
-  state.score += 20;
-  addLog({ time: formatClock(state.tick), text: `${unit.label} (${getRandomVehicle(kind)}) wurde zu ${incident.label} in ${incident.district} alarmiert.` });
-  playDispatchTone();
-  persistState();
-  render();
+function dispatch(incident) {
+  const selected=[...document.querySelectorAll('.unit-option input:checked')].map(input=>input.value);
+  if(!selected.length){notify('Mindestens eine Einheit auswählen.'); return;}
+  incident.units.forEach(call=>{if(!selected.includes(call)){const unit=state.units.find(u=>u.call===call);if(unit){unit.status='Bereit';unit.incidentId=null;}}});
+  selected.forEach(call=>{const unit=state.units.find(u=>u.call===call);if(unit){unit.status='Anfahrt';unit.incidentId=incident.id;unit.eta=Math.max(2,Math.round((3+Math.random()*5)*WEATHER[state.weather].factor));}});
+  incident.units=selected; incident.status='enroute'; incident.eta=Math.max(...selected.map(call=>state.units.find(u=>u.call===call)?.eta||4));
+  state.answered++; state.score+=incident.priority===1?18:10; log(`${selected.join(', ')} für ${incident.id} alarmiert · Anfahrt nach ${incident.district}.`); notify(`Disposition für ${incident.id} bestätigt.`); tone(820); save(); render();
 }
-
-function drawMap() {
-  const svgMarkup = `
-    <svg id="map-svg" viewBox="0 0 760 760" preserveAspectRatio="xMidYMid meet">
-      <g>
-        <path class="region" data-region="Hamburg" d="M120 78 L212 52 L262 70 L250 130 L180 150 L128 120 Z"/>
-        <path class="region" data-region="Bremen" d="M125 170 L205 165 L228 210 L170 232 L110 226 L102 188 Z"/>
-        <path class="region" data-region="Rostock" d="M515 70 L603 43 L648 83 L620 137 L550 152 L495 118 Z"/>
-        <path class="region" data-region="Berlin" d="M420 110 L568 130 L598 220 L496 248 L420 208 Z"/>
-        <path class="region" data-region="Magdeburg" d="M400 210 L492 240 L518 290 L454 326 L356 300 L370 242 Z"/>
-        <path class="region" data-region="Hannover" d="M180 215 L330 200 L365 290 L300 328 L210 330 L160 278 Z"/>
-        <path class="region" data-region="Dortmund" d="M210 325 L312 338 L338 405 L265 445 L175 420 L155 351 Z"/>
-        <path class="region" data-region="Köln" d="M120 360 L205 342 L235 422 L176 484 L92 462 L74 402 Z"/>
-        <path class="region" data-region="Frankfurt" d="M270 355 L422 342 L476 416 L420 482 L324 508 L246 454 Z"/>
-        <path class="region" data-region="Nürnberg" d="M355 420 L460 406 L515 470 L464 540 L365 545 L336 470 Z"/>
-        <path class="region" data-region="Stuttgart" d="M250 470 L336 485 L350 565 L284 625 L216 600 L196 527 Z"/>
-        <path class="region" data-region="München" d="M420 525 L556 515 L624 592 L584 672 L470 682 L410 612 Z"/>
-        <path class="region" data-region="Erfurt" d="M392 304 L470 286 L518 354 L480 430 L400 420 L372 360 Z"/>
-        <path class="region" data-region="Saarbrücken" d="M68 500 L142 484 L174 554 L130 610 L60 592 L42 536 Z"/>
-      </g>
-      <g id="districtLabels">
-        <text class="region-label" x="170" y="120">Hamburg</text>
-        <text class="region-label" x="125" y="205">Bremen</text>
-        <text class="region-label" x="530" y="120">Rostock</text>
-        <text class="region-label" x="470" y="190">Berlin</text>
-        <text class="region-label" x="425" y="260">Magdeburg</text>
-        <text class="region-label" x="230" y="270">Hannover</text>
-        <text class="region-label" x="215" y="375">Dortmund</text>
-        <text class="region-label" x="125" y="425">Köln</text>
-        <text class="region-label" x="330" y="420">Frankfurt</text>
-        <text class="region-label" x="380" y="500">Nürnberg</text>
-        <text class="region-label" x="245" y="540">Stuttgart</text>
-        <text class="region-label" x="470" y="600">München</text>
-        <text class="region-label" x="397" y="365">Erfurt</text>
-        <text class="region-label" x="90" y="545">Saarbrücken</text>
-      </g>
-      <g id="incidentPins"></g>
-    </svg>
-  `;
-  els.map.innerHTML = svgMarkup;
-  attachMapHandlers();
-  renderMapPins();
+function followUp(i){i.followUp=true;i.details+=' Rückmeldung angefordert.';log(`Rückfrage bei ${i.id} gestellt. Lage wird aktualisiert.`);notify('Rückfrage an Einsatzstelle gesendet.');save();render();}
+function escalate(i){i.escalated=true;i.priority=1;log(`${i.id} hochgestuft: Einsatzleitung und Sonderbedarf informiert.`);notify('Einsatz auf P1 eskaliert.');tone(980);save();render();}
+function clockFor(minute){return `${String(Math.floor(minute/60)%24).padStart(2,'0')}:${String(minute%60).padStart(2,'0')}`;}
+function renderResources(){
+  const groups=Object.keys(TYPES);
+  $('resourceGrid').innerHTML=groups.map(type=>{const all=state.units.filter(u=>u.type===type),free=all.filter(u=>u.status==='Bereit').length;
+    return `<div class="resource-card"><div class="resource-card-top"><strong><i class="type-dot ${TYPES[type].color}"></i> ${typeName(type)}</strong><span class="availability ${free<all.length?'busy':''}">${free}/${all.length} frei</span></div><div class="unit-list">${all.map(u=>`<span class="unit-chip" title="${u.model} · ${u.base}">${u.call} · ${u.status}</span>`).join('')}</div></div>`;}).join('');
+  $('freeCount').textContent=state.units.filter(u=>u.status==='Bereit').length;
 }
-
-function attachMapHandlers() {
-  document.querySelectorAll('.region').forEach(region => {
-    region.addEventListener('click', () => {
-      const district = region.dataset.region;
-      const matching = state.incidents.find(i => i.district === district);
-      state.selectedIncidentId = matching ? matching.id : (state.incidents[0]?.id || null);
-      render();
-    });
-  });
+function renderLog(){$('radioLog').innerHTML=state.logs.map(entry=>`<li><time>${entry.time}</time>${esc(entry.text)}</li>`).join('');$('logCount').textContent=state.logs.length;}
+function renderMap(){
+  const names=Object.keys(DISTRICTS);
+  const districts=names.map(name=>{const [x,y]=DISTRICTS[name];return `<g><rect class="district ${state.incidents.some(i=>i.district===name&&i.id===state.selected)?'active':''}" data-district="${name}" x="${x-8}" y="${y-8}" width="16" height="16" rx="4"/><text class="district-label" x="${x+12}" y="${y+4}">${name}</text></g>`;}).join('');
+  const pins=state.incidents.filter(i=>i.status!=='closed').map(i=>{const [x,y]=DISTRICTS[i.district];return `<g class="map-pin" data-id="${i.id}"><circle cx="${x}" cy="${y}" r="6" fill="${i.type==='fire'?'#fb856b':i.type==='med'?'#53d4df':i.type==='police'?'#729eff':'#ad9cff'}"/><text x="${x-4}" y="${y+4}" fill="#061018" font-size="8" font-weight="800">${i.priority}</text></g>`;}).join('');
+  const unitPins=state.units.filter(u=>u.status!=='Bereit').map(u=>{const i=state.incidents.find(item=>item.id===u.incidentId);if(!i)return '';const [x,y]=DISTRICTS[i.district];return `<circle class="unit-pin" cx="${x+Math.random()*5-2}" cy="${y+Math.random()*5-2}" r="3"/>`;}).join('');
+  $('map').innerHTML=`<svg viewBox="0 0 100 100" role="img" aria-label="Einsatzkarte"><path d="M0 52 Q20 39 35 51 T70 42 T100 50 M5 77 Q30 60 52 70 T100 63" fill="none" class="map-grid"/><path d="M12 0v100M35 0v100M58 0v100M81 0v100M0 25h100M0 50h100M0 75h100" class="map-grid"/>${districts}${pins}${unitPins}</svg>`;
+  $('map').querySelectorAll('[data-id]').forEach(n=>n.addEventListener('click',()=>{state.selected=n.dataset.id;render();}));
+  $('map').querySelectorAll('[data-district]').forEach(n=>n.addEventListener('click',()=>{const i=state.incidents.find(item=>item.district===n.dataset.district&&item.status!=='closed');if(i){state.selected=i.id;render();}}));
 }
-
-function renderMapPins() {
-  const pins = document.getElementById('incidentPins');
-  if (!pins) return;
-
-  pins.innerHTML = state.incidents.map(incident => {
-    const point = districtInfo[incident.district];
-    if (!point) return '';
-    const color = incident.type === 'fire' ? '#ff7a59' : incident.type === 'med' ? '#6dd3ff' : incident.type === 'police' ? '#6ea8fe' : '#9f7aea';
-    return `
-      <g class="map-marker ${incident.id === state.selectedIncidentId ? 'active' : ''}" data-incident="${incident.id}">
-        <circle cx="${point.x}" cy="${point.y}" r="13" fill="${color}" opacity="0.14"></circle>
-        <circle cx="${point.x}" cy="${point.y}" r="6" fill="${color}" stroke="#dfeffb" stroke-width="2"></circle>
-      </g>
-    `;
-  }).join('');
-
-  pins.querySelectorAll('[data-incident]').forEach(pin => {
-    pin.addEventListener('click', () => {
-      state.selectedIncidentId = pin.dataset.incident;
-      render();
-    });
-  });
-
-  document.querySelectorAll('.region').forEach(region => {
-    const district = region.dataset.region;
-    const selected = state.incidents.some(i => i.district === district && i.id === state.selectedIncidentId);
-    region.classList.toggle('active', selected);
-  });
+function render(){
+  $('clock').textContent=clock(); const hour=Math.floor(state.minute/60)%24;
+  $('shift').textContent=`${hour<14?'Frühdienst':hour<22?'Spätdienst':'Nachtdienst'} · ${Math.floor((state.minute-360)/60)}:${String((state.minute-360)%60).padStart(2,'0')}`;
+  const weather=WEATHER[state.weather];$('conditions').textContent=`${weather.icon} ${weather.name} · Verkehr ${weather.traffic}`;$('score').textContent=state.score;
+  const open=state.incidents.filter(i=>i.status!=='closed').length;$('openCount').textContent=open;$('closedCount').textContent=state.closed;$('responseRate').textContent=`${state.calls?Math.round(state.answered/state.calls*100):100}%`;
+  renderQueue();renderDetails();renderResources();renderLog();renderMap();$('soundToggle').textContent=sound?'Ton an':'Ton aus';
 }
-
-function updateWeather() {
-  state.weather = weatherModes[Math.floor((state.tick / 100) % weatherModes.length)];
+function tick(){
+  state.minute++; if(state.minute%37===0) newAutoCall();
+  if(state.minute%90===0){state.weather=(state.weather+1)%WEATHER.length;log(`Wetterlage: ${WEATHER[state.weather].name}. Verkehrslage ${WEATHER[state.weather].traffic}.`);}
+  state.incidents.forEach(i=>{if(i.status==='closed')return;i.age++;
+    if(!i.units.length && i.age>8 && !i.escalated){i.escalated=true;i.priority=Math.max(1,i.priority-1);state.score=Math.max(0,state.score-6);log(`${i.id}: Keine Einheit verfügbar, Priorität angehoben.`);tone(980);}
+    if(i.status==='enroute'){i.eta--;i.units.forEach(call=>{const u=state.units.find(x=>x.call===call);if(u)u.eta=i.eta;});if(i.eta<=0){i.status='scene';i.eta=4;log(`${i.id}: ${i.units.join(', ')} vor Ort, erste Lagemeldung folgt.`);}}
+    else if(i.status==='scene'){i.eta--;if(i.eta<=0){if(i.type==='med'&&i.priority<3){i.status='transport';i.eta=5;log(`${i.id}: Patient wird in geeignete Klinik transportiert.`);}else{i.status='returning';i.eta=3;log(`${i.id}: Lage unter Kontrolle, Einheiten rücken ab.`);}}}
+    else if(i.status==='transport'){i.eta--;if(i.eta<=0){i.status='returning';i.eta=3;log(`${i.id}: Übergabe im Klinikum erfolgt.`);}}
+    else if(i.status==='returning'){i.eta--;if(i.eta<=0){i.status='closed';state.closed++;state.score+=i.priority===1?35:20;i.units.forEach(call=>{const u=state.units.find(x=>x.call===call);if(u){u.status='Bereit';u.incidentId=null;u.eta=0;}});log(`${i.id}: Einsatz abgeschlossen. Einheiten wieder bereit.`);}}
+  }); save();render();
 }
-
-function generateCall() {
-  if (state.incidents.length < 8) {
-    const next = makeIncident();
-    state.incidents.push(next);
-    addLog({ time: formatClock(state.tick), text: `Neuer Anruf: ${next.label} in ${next.district}.` });
-    playSirenBurst();
-    persistState();
-  }
+function newAutoCall(){if(state.incidents.filter(i=>i.status!=='closed').length>=8)return;const i=makeIncident();state.incidents.push(i);state.selected=i.id;state.calls++;log(`Neuer Notruf: ${i.label} in ${i.district} · ${priorityName(i.priority)}.`);notify(`Neuer Notruf ${i.id}: ${i.label}`);tone(880);save();render();}
+function openCallDialog(){const dialog=$('callDialog');if(dialog.showModal)dialog.showModal();else dialog.setAttribute('open','');}
+function setup(){
+  try{const stored=JSON.parse(localStorage.getItem(KEY)||'null');if(stored&&stored.units&&stored.incidents){state={...emptyState(),...stored};}}catch(_){}
+  if(!state.incidents.length)seed();
+  $('districtSelect').innerHTML=Object.keys(DISTRICTS).map(name=>`<option>${name}</option>`).join('');
+  document.querySelectorAll('.filter').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('.filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');state.filter=btn.dataset.filter;render();}));
+  $('newCall').addEventListener('click',openCallDialog);$('radioButton').addEventListener('click',()=>{$('radioLog').focus();notify('Funkverkehr fokussiert.');});
+  $('soundToggle').addEventListener('click',()=>{sound=!sound;render();});$('newShift').addEventListener('click',()=>{if(confirm('Aktuelle Schicht wirklich zurücksetzen?')){state=emptyState();seed();render();notify('Neue Schicht gestartet.');}});
+  $('callForm').addEventListener('submit',event=>{event.preventDefault();const data=new FormData(event.currentTarget),i=makeIncident({type:data.get('type'),priority:data.get('priority'),location:data.get('location'),district:data.get('district'),caller:data.get('caller')||'Unbekannt',details:data.get('details')||'Keine weiteren Angaben.'});state.incidents.push(i);state.selected=i.id;state.calls++;log(`Notruf aufgenommen: ${i.id} · ${i.label} in ${i.district}.`);event.currentTarget.closest('dialog').close();notify(`Einsatz ${i.id} angelegt.`);tone(880);save();render();});
+  document.addEventListener('keydown',event=>{if(event.target.matches('input,textarea,select'))return;if(event.key.toLowerCase()==='n')openCallDialog();if(event.key.toLowerCase()==='r'){$('radioLog').scrollIntoView({behavior:'smooth'});notify('Funkverkehr geöffnet.');}if(['1','2','3','4'].includes(event.key)){const i=state.incidents.find(x=>x.id===state.selected);if(i){const type=['fire','med','police','rescue'][Number(event.key)-1];const unit=available(type)[0];if(unit){state.selected=i.id;renderDetails();const checkbox=document.querySelector(`.unit-option input[value="${unit.call}"]`);if(checkbox){checkbox.checked=true;document.querySelector('.dispatch-action').click();}}}}});
+  render();setInterval(tick,1000);
 }
-
-function tick() {
-  state.tick += 1;
-  state.shift = Math.floor(state.tick / 60);
-  updateWeather();
-
-  if (state.tick % 22 === 0) {
-    generateCall();
-  }
-
-  const finished = [];
-  state.incidents.forEach(incident => {
-    if (incident.assigned.length) {
-      incident.travel += 1;
-      if (incident.travel >= incident.timer) {
-        const points = incident.priority * 40 + incident.assigned.length * 15;
-        state.score += points;
-        addLog({ time: formatClock(state.tick), text: `Einsatz ${incident.label} in ${incident.district} abgeschlossen. ${incident.priority === 1 ? 'Erfolgreich stabilisiert.' : 'Situation unter Kontrolle.'}` });
-        incident.assigned.forEach(kind => {
-          if (state.units[kind]) {
-            state.units[kind].busy = Math.max(0, state.units[kind].busy - 1);
-          }
-        });
-        finished.push(incident.id);
-      }
-    } else {
-      incident.wait += 1;
-      if (incident.wait > 120 + incident.priority * 10) {
-        addLog({ time: formatClock(state.tick), text: `Alarmstufe steigt: ${incident.label} in ${incident.district} ist ohne Einsatzmittel akut.` });
-        state.score = Math.max(0, state.score - 12);
-        incident.priority = Math.max(1, incident.priority - 1);
-        playSirenBurst();
-      }
-    }
-  });
-
-  if (finished.length) {
-    state.incidents = state.incidents.filter(incident => !finished.includes(incident.id));
-    if (!state.incidents.some(item => item.id === state.selectedIncidentId)) {
-      state.selectedIncidentId = state.incidents[0]?.id || null;
-    }
-  }
-
-  persistState();
-  render();
-}
-
-function render() {
-  els.clock.textContent = formatClock(state.tick);
-  els.score.textContent = String(state.score);
-  els.shift.textContent = `${state.shift}h`;
-  els.weather.textContent = state.weather;
-  updateIncidentCount();
-  renderResources();
-  renderIncidents();
-  renderDetails();
-  renderMapPins();
-  els.soundToggle.textContent = syncMeta.audioEnabled ? 'Ton: An' : 'Ton: Aus';
-}
-
-function resetToDefaultState() {
-  state.tick = 0;
-  state.shift = 0;
-  state.score = 0;
-  state.weather = 'Klar';
-  state.selectedIncidentId = null;
-  state.incidents = [makeIncident(), makeIncident(), makeIncident()];
-  state.selectedIncidentId = state.incidents[0]?.id || null;
-  state.units = {
-    fire: { total: 14, busy: 0, label: 'Feuerwehr', fleets: ['ELW', 'LF 20', 'LF 10', 'RTW', 'GW-A'] },
-    police: { total: 12, busy: 0, label: 'Polizei', fleets: ['Streifenwagen', 'Einsatzwagen', 'SEK', 'Mannschaft'] },
-    med: { total: 15, busy: 0, label: 'Rettungsdienst', fleets: ['RTW', 'KTW', 'NEF', 'Notarzt'] },
-    rescue: { total: 8, busy: 0, label: 'Technische Hilfe', fleets: ['THW', 'Bergung', 'Gerätewagen', 'Funk'] }
-  };
-  state.log = [];
-  addLog({ time: '00:00', text: 'Leitstelle online. Einsatzlandkarte aktiviert.' });
-  persistState();
-}
-
-function boot() {
-  drawMap();
-  setUpSync();
-  restoreRemoteState();
-
-  if (!state.incidents.length) {
-    resetToDefaultState();
-  } else {
-    state.selectedIncidentId = state.selectedIncidentId || state.incidents[0]?.id || null;
-    if (!state.log.length) {
-      addLog({ time: formatClock(state.tick), text: 'Leitstelle online. Einsatzlandkarte aktiviert.' });
-    }
-  }
-
-  els.soundToggle.addEventListener('click', () => {
-    syncMeta.audioEnabled = !syncMeta.audioEnabled;
-    if (syncMeta.audioEnabled) {
-      ensureAudio();
-      playDispatchTone();
-    }
-    render();
-  });
-
-  els.syncButton.addEventListener('click', () => {
-    addLog({ time: formatClock(state.tick), text: 'Lobby-Synchronisierung manuell aktualisiert.' });
-    persistState();
-    render();
-  });
-
-  render();
-  setInterval(tick, 1000);
-}
-
-boot();
+setup();
