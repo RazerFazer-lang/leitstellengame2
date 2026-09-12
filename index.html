@@ -8,6 +8,20 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <section id="mainMenu" class="main-menu" aria-labelledby="menuTitle">
+    <div class="menu-panel">
+      <div class="menu-brand"><span class="brand-mark">✦</span><p class="eyebrow">Integrierte Leitstelle · Nord</p></div>
+      <p class="eyebrow">Schichtführung</p>
+      <h1 id="menuTitle">Einsatzführung</h1>
+      <p class="menu-intro">Übernimm die Lage, triagiere Notrufe und halte deine Einheiten handlungsfähig.</p>
+      <div class="menu-actions">
+        <button id="continueShift" class="primary menu-primary">Schicht fortsetzen</button>
+        <button id="startShift" class="ghost menu-button">Neue Schicht starten</button>
+        <div class="menu-secondary"><button id="helpButton" class="text-button">Spielhilfe</button><button id="settingsButton" class="text-button">Einstellungen</button></div>
+      </div>
+      <p id="saveSummary" class="menu-save"></p>
+    </div>
+  </section>
   <main class="shell">
     <header class="topbar">
       <div class="brand"><span class="brand-mark">✦</span><div><p class="eyebrow">Integrierte Leitstelle · Nord</p><h1>Einsatzführung</h1></div></div>
@@ -68,6 +82,14 @@
       </div>
       <div class="dialog-actions"><button value="cancel" class="ghost">Abbrechen</button><button value="default" class="primary">Einsatz anlegen</button></div>
     </form>
+  </dialog>
+  <dialog id="helpDialog" class="info-dialog">
+    <div class="dialog-head"><div><p class="eyebrow">Leitstellenhandbuch</p><h2>Spielhilfe</h2></div><button class="close" data-close-dialog aria-label="Schließen">×</button></div>
+    <div class="info-content"><p><strong>1 · Lage bewerten</strong><br>Öffne einen neuen oder eingegangenen Notruf, prüfe Ort, Betroffene und Gefahrenhinweise und schließe die Erstbewertung ab.</p><p><strong>2 · Disposition</strong><br>Wähle passende freie Einheiten und alarmiere sie. Beobachte danach Anfahrt, Vor-Ort-Phase, Transport und Rückkehr im Statusboard.</p><p><strong>3 · Führung</strong><br>Nutze Rückfragen und Eskalation, wenn Informationen fehlen oder die Lage kippt. Die Schicht läuft in Echtzeit weiter.</p><p class="muted">Tasten: <kbd>N</kbd> Notruf · <kbd>R</kbd> Funk · <kbd>1–4</kbd> Fachbereich disponieren · <kbd>Esc</kbd> Dialog schließen</p></div>
+  </dialog>
+  <dialog id="settingsDialog" class="info-dialog">
+    <div class="dialog-head"><div><p class="eyebrow">System</p><h2>Einstellungen</h2></div><button class="close" data-close-dialog aria-label="Schließen">×</button></div>
+    <div class="info-content"><label class="setting-row"><span><strong>Akustische Hinweise</strong><small>Signaltöne bei Notrufen und Statuswechseln</small></span><input id="menuSoundToggle" type="checkbox" checked></label><p class="muted">Der Spielstand wird automatisch lokal im Browser gespeichert. Es werden keine Daten übertragen.</p></div>
   </dialog>
   <script src="app.js"></script>
 </body>

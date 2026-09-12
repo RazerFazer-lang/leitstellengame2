@@ -28,6 +28,8 @@ const emptyState = () => ({
 let state = emptyState();
 let sound = true;
 let toastTimer;
+let simulationStarted = false;
+let tickTimer;
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const clock = () => `${String(Math.floor(state.minute / 60) % 24).padStart(2,'0')}:${String(state.minute % 60).padStart(2,'0')}`;
@@ -158,17 +160,41 @@ function tick(){
 }
 function newAutoCall(){if(state.incidents.filter(i=>i.status!=='closed').length>=8)return;const i=makeIncident();state.incidents.push(i);state.selected=i.id;state.calls++;log(`Neuer Notruf: ${i.label} in ${i.district} · ${priorityName(i.priority)}.`);notify(`Neuer Notruf ${i.id}: ${i.label}`);tone(880);save();render();}
 function openCallDialog(){const dialog=$('callDialog');if(dialog.showModal)dialog.showModal();else dialog.setAttribute('open','');}
+function hasSavedState(){
+  try { const value=JSON.parse(localStorage.getItem(KEY)||'null'); return value && Array.isArray(value.units) && Array.isArray(value.incidents); } catch (_) { return false; }
+}
+function resetShift(){state=emptyState();seed();render();}
+function showMenu(){
+  simulationStarted=false; $('mainMenu').classList.remove('hidden');
+  const hasSave=hasSavedState(); $('continueShift').disabled=!hasSave;
+  $('continueShift').textContent=hasSave?'Schicht fortsetzen':'Keine gespeicherte Schicht';
+  $('saveSummary').textContent=hasSave?'Ein lokaler Spielstand ist verfügbar.':'Starte eine neue Schicht – dein Fortschritt wird automatisch gespeichert.';
+  if(tickTimer){clearInterval(tickTimer);tickTimer=null;}
+}
+function startSimulation(useSave){
+  if(!useSave)resetShift();
+  simulationStarted=true; $('mainMenu').classList.add('hidden');
+  if(!tickTimer)tickTimer=setInterval(tick,1000);
+  render();
+}
 function setup(){
-  try{const stored=JSON.parse(localStorage.getItem(KEY)||'null');if(stored&&stored.units&&stored.incidents){state={...emptyState(),...stored};}}catch(_){}
-  state.units=state.units.map((unit,index)=>({...unit,capability:unit.capability||FLEET[index]?.[4]||'Standard'}));
-  state.incidents.forEach(i=>{if(!i.status)i.status='new';if(i.persons==null)i.persons=1;if(!i.hazard)i.hazard='none';});
+  try{const stored=JSON.parse(localStorage.getItem(KEY)||'null');if(stored&&Array.isArray(stored.units)&&Array.isArray(stored.incidents)){state={...emptyState(),...stored,units:stored.units,incidents:stored.incidents};}}catch(_){state=emptyState();}
+  state.units=Array.isArray(state.units)?state.units.map((unit,index)=>({...unit,call:unit.call||FLEET[index]?.[0]||`U-${index+1}`,type:unit.type||FLEET[index]?.[1]||'rescue',status:unit.status||'Bereit',incidentId:unit.incidentId||null,eta:Number.isFinite(unit.eta)?unit.eta:0,capability:unit.capability||FLEET[index]?.[4]||'Standard'})):emptyState().units;
+  state.incidents=Array.isArray(state.incidents)?state.incidents.filter(i=>i&&typeof i==='object'&&TYPES[i.type]):[];
+  state.minute=Number.isFinite(state.minute)?Math.max(360,state.minute):360;
+  state.weather=Number.isInteger(state.weather)&&state.weather>=0&&state.weather<WEATHER.length?state.weather:0;
+  ['score','closed','calls','answered','answerSeconds'].forEach(key=>{if(!Number.isFinite(state[key]))state[key]=0;});
+  state.incidents.forEach(i=>{if(!i.status)i.status='new';if(i.persons==null)i.persons=1;if(!i.hazard)i.hazard='none';if(!Array.isArray(i.units))i.units=[];if(!Number.isFinite(i.age))i.age=0;if(!Number.isFinite(i.priority)||i.priority<1||i.priority>3)i.priority=2;});
   if(!state.incidents.length)seed();
   $('districtSelect').innerHTML=Object.keys(DISTRICTS).map(name=>`<option>${name}</option>`).join('');
   document.querySelectorAll('.filter').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('.filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');state.filter=btn.dataset.filter;render();}));
   $('newCall').addEventListener('click',openCallDialog);$('radioButton').addEventListener('click',()=>{$('radioLog').focus();notify('Funkverkehr fokussiert.');});
   $('soundToggle').addEventListener('click',()=>{sound=!sound;render();});$('newShift').addEventListener('click',()=>{if(confirm('Aktuelle Schicht wirklich zurücksetzen?')){state=emptyState();seed();render();notify('Neue Schicht gestartet.');}});
+  $('startShift').addEventListener('click',()=>startSimulation(false));$('continueShift').addEventListener('click',()=>{if(hasSavedState())startSimulation(true);});
+  $('helpButton').addEventListener('click',()=>$('helpDialog').showModal());$('settingsButton').addEventListener('click',()=>{$('menuSoundToggle').checked=sound;$('settingsDialog').showModal();});
+  $('menuSoundToggle').addEventListener('change',event=>{sound=event.currentTarget.checked;render();});document.querySelectorAll('[data-close-dialog]').forEach(button=>button.addEventListener('click',()=>button.closest('dialog').close()));
   $('callForm').addEventListener('submit',event=>{event.preventDefault();const data=new FormData(event.currentTarget),i=makeIncident({type:data.get('type'),priority:data.get('priority'),location:data.get('location'),district:data.get('district'),caller:data.get('caller')||'Unbekannt',details:data.get('details')||'Keine weiteren Angaben.',persons:data.get('persons'),hazard:data.get('hazard')});state.incidents.push(i);state.selected=i.id;state.calls++;log(`Notruf aufgenommen: ${i.id} · ${i.label} in ${i.district}.`);event.currentTarget.closest('dialog').close();notify(`Einsatz ${i.id} angelegt · Erstbewertung erforderlich.`);tone(880);save();render();});
   document.addEventListener('keydown',event=>{if(event.target.matches('input,textarea,select'))return;if(event.key.toLowerCase()==='n')openCallDialog();if(event.key.toLowerCase()==='r'){$('radioLog').scrollIntoView({behavior:'smooth'});notify('Funkverkehr geöffnet.');}if(['1','2','3','4'].includes(event.key)){const i=state.incidents.find(x=>x.id===state.selected);if(i){const type=['fire','med','police','rescue'][Number(event.key)-1];const unit=available(type)[0];if(unit){state.selected=i.id;renderDetails();const checkbox=document.querySelector(`.unit-option input[value="${unit.call}"]`);if(checkbox){checkbox.checked=true;document.querySelector('.dispatch-action').click();}}}}});
-  render();setInterval(tick,1000);
+  render();showMenu();
 }
 setup();

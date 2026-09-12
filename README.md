@@ -10,6 +10,8 @@ node server.js
 
 Anschließend `http://localhost:8000` öffnen. Es gibt keine externe API, keine Datenbank und keine Abhängigkeiten; `server.js` liefert die statischen Dateien aus.
 
+Beim ersten Öffnen erscheint das Startmenü. **Neue Schicht starten** legt einen frischen Dienst mit drei Ausgangslagen an. **Schicht fortsetzen** lädt den automatisch im Browser gespeicherten Spielstand; ist keiner vorhanden, bleibt die Option deaktiviert. Spielhilfe und Einstellungen sind direkt im Menü erreichbar. Der Spielstand liegt ausschließlich in `localStorage` dieses Browsers.
+
 ## Spielablauf
 
 - **Notrufannahme und Triage:** Neue Lagen erscheinen automatisch. Eigene Anrufe erfassen Betroffenenzahl und Gefahrenhinweise; erst nach der Erstbewertung werden sie disponierbar.
@@ -32,3 +34,7 @@ Anschließend `http://localhost:8000` öffnen. Es gibt keine externe API, keine 
 | `4` | Technische Hilfe disponieren |
 
 Die Schicht wird automatisch in `localStorage` gespeichert. „Neue Schicht“ setzt Spielstand, Queue, Einheiten und Funklog kontrolliert zurück. Ein zweiter Browser-Tab ist unabhängig und benötigt keinen Server-State.
+
+## Bedienung und Kompatibilität
+
+Die Simulation läuft ohne Build-Schritt in aktuellen Desktop- und Mobilbrowsern. Der Dienst beginnt erst nach einer Auswahl im Startmenü zu laufen; dadurch kann ein pausierter Spielstand in Ruhe fortgesetzt werden. `Esc` schließt den aktiven Notruf-, Hilfe- oder Einstellungsdialog. Dialoge, Filter und die Einsatzkarte passen sich an schmale Bildschirme an.
