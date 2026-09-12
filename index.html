@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#08131d">
   <title>Leitstelle Nord · Einsatzführung</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -95,6 +96,9 @@
     <div class="info-content"><label class="setting-row"><span><strong>Akustische Hinweise</strong><small>Signaltöne bei Notrufen und Statuswechseln</small></span><input id="menuSoundToggle" type="checkbox" checked></label><p class="muted">Der Spielstand wird automatisch lokal im Browser gespeichert. Es werden keine Daten übertragen.</p></div>
   </dialog>
   <script src="data-provider.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""></script>
   <script src="app.js"></script>
 </body>
 </html>

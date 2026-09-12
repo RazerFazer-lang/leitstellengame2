@@ -31,6 +31,11 @@ let sound = true;
 let toastTimer;
 let simulationStarted = false;
 let tickTimer;
+let leafletMap = null;
+let leafletLayers = null;
+let tileErrors = 0;
+let tileFallbackTimer = null;
+let mapUsesFallback = false;
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const clock = () => `${String(Math.floor(state.minute / 60) % 24).padStart(2,'0')}:${String(state.minute % 60).padStart(2,'0')}`;
@@ -137,7 +142,49 @@ function renderResources(){
   $('freeCount').textContent=state.units.filter(u=>u.status==='Bereit').length;
 }
 function renderLog(){$('radioLog').innerHTML=state.logs.map(entry=>`<li><time>${entry.time}</time>${esc(entry.text)}</li>`).join('');$('logCount').textContent=state.logs.length;}
-function renderMap(){
+function mapMarker(className, label) {
+  return L.divIcon({className:'dispatch-marker-wrap', html:`<span class="dispatch-marker ${className}">${esc(label)}</span>`, iconSize:[26,26], iconAnchor:[13,13]});
+}
+function useMapFallback(reason) {
+  mapUsesFallback = true;
+  if (leafletMap) {
+    leafletMap.remove();
+    leafletMap = null;
+    leafletLayers = null;
+  }
+  renderMapFallback();
+  $('dataStatus').innerHTML = '<i></i> OFFLINE-KARTE';
+  $('mapSource').textContent = `Kartengrundlage: Offline-Saatdaten · ${reason || 'Leaflet/Kacheln nicht verfügbar'} · Routing: lokale ETA-Schätzung`;
+}
+function initLeafletMap() {
+  if (leafletMap || mapUsesFallback) return;
+  if (!window.L || !window.L.map) {
+    useMapFallback('Leaflet nicht geladen');
+    return;
+  }
+  try {
+    leafletMap = L.map('map', {zoomControl:true, attributionControl:true}).setView([DATA.region.center.lat, DATA.region.center.lon], 10);
+    const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>'
+    }).addTo(leafletMap);
+    leafletLayers = {tiles, incidents:L.layerGroup().addTo(leafletMap), units:L.layerGroup().addTo(leafletMap), places:L.layerGroup().addTo(leafletMap), routes:L.layerGroup().addTo(leafletMap)};
+    tiles.on('tileload', () => {
+      tileErrors = 0;
+      $('dataStatus').innerHTML = '<i></i> OSM-KARTE';
+      $('mapSource').textContent = `Kartengrundlage: OpenStreetMap · Routing: ${DATA.routingSource} · © OpenStreetMap contributors`;
+    });
+    tiles.on('tileerror', () => {
+      tileErrors++;
+      if (tileErrors >= 3 && !tileFallbackTimer) {
+        tileFallbackTimer = setTimeout(() => { tileFallbackTimer = null; if (tileErrors >= 3) useMapFallback('OSM-Kacheln nicht erreichbar'); }, 1800);
+      }
+    });
+    leafletMap.on('load', () => leafletMap.invalidateSize());
+  } catch (_) {
+    useMapFallback('Leaflet konnte nicht initialisiert werden');
+  }
+}
+function renderMapFallback() {
   const names=Object.keys(DISTRICTS);
   const mapPoint = name => DISTRICTS[name] || DISTRICTS.Kiel;
   const districts=names.map(name=>{const [x,y]=DISTRICTS[name];return `<g><rect class="district ${state.incidents.some(i=>i.district===name&&i.id===state.selected)?'active':''}" data-district="${name}" x="${x-8}" y="${y-8}" width="16" height="16" rx="4"/><text class="district-label" x="${x+12}" y="${y+4}">${name}</text></g>`;}).join('');
@@ -145,10 +192,38 @@ function renderMap(){
   const hospitalPins=DATA.hospitals.map(hospital=>{const [x,y]=DISTRICTS[hospital.place]||[50,50];return `<rect class="hospital-pin" x="${x-2}" y="${y-2}" width="4" height="4"><title>${esc(hospital.name)}</title></rect>`;}).join('');
   const pins=state.incidents.filter(i=>i.status!=='closed').map(i=>{const [x,y]=mapPoint(i.district);return `<g class="map-pin" data-id="${i.id}"><circle cx="${x}" cy="${y}" r="6" fill="${i.type==='fire'?'#fb856b':i.type==='med'?'#53d4df':i.type==='police'?'#729eff':'#ad9cff'}"/><text x="${x-4}" y="${y+4}" fill="#061018" font-size="8" font-weight="800">${i.priority}</text></g>`;}).join('');
   const unitPins=state.units.filter(u=>u.status!=='Bereit').map(u=>{const i=state.incidents.find(item=>item.id===u.incidentId);if(!i)return '';const [x,y]=mapPoint(i.district);const offset=(u.call.charCodeAt(2)%5)-2;return `<circle class="unit-pin" cx="${x+offset}" cy="${y+offset}" r="3"/>`;}).join('');
-  $('map').innerHTML=`<svg viewBox="0 0 100 100" role="img" aria-label="Regionalkarte Schleswig-Holstein"><path d="M0 52 Q20 39 35 51 T70 42 T100 50 M5 77 Q30 60 52 70 T100 63" fill="none" class="map-grid"/><path d="M12 0v100M35 0v100M58 0v100M81 0v100M0 25h100M0 50h100M0 75h100" class="map-grid"/>${districts}${stationPins}${hospitalPins}${pins}${unitPins}</svg>`;
+  $('map').innerHTML=`<svg viewBox="0 0 100 100" role="img" aria-label="Offline-Regionalkarte Schleswig-Holstein"><path d="M0 52 Q20 39 35 51 T70 42 T100 50 M5 77 Q30 60 52 70 T100 63" fill="none" class="map-grid"/><path d="M12 0v100M35 0v100M58 0v100M81 0v100M0 25h100M0 50h100M0 75h100" class="map-grid"/>${districts}${stationPins}${hospitalPins}${pins}${unitPins}</svg>`;
   $('map').querySelectorAll('[data-id]').forEach(n=>n.addEventListener('click',()=>{state.selected=n.dataset.id;render();}));
   $('map').querySelectorAll('[data-district]').forEach(n=>n.addEventListener('click',()=>{const i=state.incidents.find(item=>item.district===n.dataset.district&&item.status!=='closed');if(i){state.selected=i.id;render();}}));
 }
+  function renderLeafletMap() {
+    if (!leafletMap || !leafletLayers) return;
+    leafletLayers.incidents.clearLayers(); leafletLayers.units.clearLayers(); leafletLayers.places.clearLayers(); leafletLayers.routes.clearLayers();
+    DATA.stations.forEach(station => L.marker([station.lat, station.lon], {icon:mapMarker(`station-${station.type}`, '●'), title:station.name})
+      .bindTooltip(`${esc(station.name)} · ${esc(station.shortName)}`).addTo(leafletLayers.places));
+    DATA.hospitals.forEach(hospital => L.marker([hospital.lat, hospital.lon], {icon:mapMarker('hospital', '✚'), title:hospital.name})
+      .bindTooltip(esc(hospital.name)).addTo(leafletLayers.places));
+    state.incidents.filter(i=>i.status!=='closed').forEach(i => {
+      const selected = i.id === state.selected;
+      const marker = L.marker([i.coordinates.lat, i.coordinates.lon], {icon:mapMarker(`incident-${i.type}${selected?' selected':''}`, i.priority), title:i.label})
+        .bindPopup(`<strong>${esc(i.label)}</strong><br>${esc(i.location)}<br>${priorityName(i.priority)} · ${stateName(i.status)}`);
+      marker.on('click', () => { state.selected=i.id; render(); });
+      marker.addTo(leafletLayers.incidents);
+    });
+    state.units.filter(u=>u.status!=='Bereit').forEach(u => {
+      const incident=state.incidents.find(i=>i.id===u.incidentId), station=DATA.station(u.stationId);
+      if (!incident || !station) return;
+      L.marker([incident.coordinates.lat, incident.coordinates.lon], {icon:mapMarker(`unit-${u.type}`, '◆'), title:u.call})
+        .bindTooltip(`${esc(u.call)} · ${esc(u.status)}`).addTo(leafletLayers.units);
+      L.polyline([[station.lat,station.lon],[incident.coordinates.lat,incident.coordinates.lon]], {color:'#53d4df',weight:3,dashArray:'7 8',opacity:.8})
+        .bindTooltip(`${esc(u.call)} · ${u.route?.distanceKm ?? '—'} km · ETA ${u.eta || '—'} min`).addTo(leafletLayers.routes);
+    });
+  }
+  function renderMap() {
+    initLeafletMap();
+    if (mapUsesFallback) { renderMapFallback(); return; }
+    renderLeafletMap();
+  }
 function render(){
   $('clock').textContent=clock(); const hour=Math.floor(state.minute/60)%24;
   $('shift').textContent=`${hour<14?'Frühdienst':hour<22?'Spätdienst':'Nachtdienst'} · ${Math.floor((state.minute-360)/60)}:${String((state.minute-360)%60).padStart(2,'0')}`;
@@ -187,6 +262,7 @@ function startSimulation(useSave){
   save();
   simulationStarted=true; $('mainMenu').classList.add('hidden');
   if(!tickTimer)tickTimer=setInterval(tick,1000);
+  if(leafletMap) setTimeout(()=>leafletMap.invalidateSize(),0);
   render();
 }
 function setup(){

@@ -8,7 +8,13 @@ Die aktuelle Phase ergänzt eine echte, aber bewusst begrenzte Geodaten-Grundlag
 Schleswig-Holstein (Kiel, Rendsburg, Eckernförde und weitere Orte) sowie verifizierbare
 Station- und Klinik-Entitäten. `data-provider.js` kapselt Orte, Stationen, Kliniken,
 Entfernungen, ETA und die Auswahl der nächstgelegenen verfügbaren Fachkomponente.
-Die Standardkarte ist eine regionale Orientierungskarte, kein Navigationssystem.
+Die Standardkarte nutzt Leaflet 1.9.4 und lädt bei erreichbarem Netzwerk echte
+OpenStreetMap-Straßenkacheln. Sie ist eine regionale Orientierungskarte, kein
+Navigationssystem. Leaflet und die Kacheln sind optionale Online-Ressourcen: Wenn
+das CDN oder OSM nicht erreichbar ist, wechselt die Oberfläche sichtbar auf die
+lokale Offline-Saatkarte. Einsätze, Stationen, Kliniken und disponierte Einheiten
+bleiben auch dann interaktiv; Routen werden als direkte Verbindung und mit der
+lokalen ETA-Schätzung dargestellt.
 `data/region.geojson` ist eine kleine, lokale Seed-Datei und wird nicht als Live-Datenquelle
 behauptet.
 
@@ -28,6 +34,8 @@ sichtbare Attribution „© OpenStreetMap contributors“ und der Lizenzhinweis
 https://www.openstreetmap.org/copyright erforderlich. Die mitgelieferten Namen und
 Koordinaten sind nur Spiel-Saatdaten, nicht für Disposition, Navigation oder
 Echtbetrieb geeignet. Es gibt keine Live-Verkehrs-, Leitstellen- oder Klinikbelegung.
+Die Online-Karte zeigt diese Attribution direkt im Leaflet-Kartenrand; die
+Offline-Karte behauptet keine OSM-Kacheln und kennzeichnet ihre lokale Saatdatenbasis.
 
 ## Start
 
@@ -64,4 +72,4 @@ Die Schicht wird automatisch in `localStorage` gespeichert. „Neue Schicht“ s
 
 ## Bedienung und Kompatibilität
 
-Die Simulation läuft ohne Build-Schritt in aktuellen Desktop- und Mobilbrowsern. Der Dienst beginnt erst nach einer Auswahl im Startmenü zu laufen; dadurch kann ein pausierter Spielstand in Ruhe fortgesetzt werden. `Esc` schließt den aktiven Notruf-, Hilfe- oder Einstellungsdialog. Dialoge, Filter und die Einsatzkarte passen sich an schmale Bildschirme an.
+Die Simulation läuft ohne Build-Schritt in aktuellen Desktop- und Mobilbrowsern. Der Dienst beginnt erst nach einer Auswahl im Startmenü zu laufen; dadurch kann ein pausierter Spielstand in Ruhe fortgesetzt werden. `Esc` schließt den aktiven Notruf-, Hilfe- oder Einstellungsdialog. Dialoge, Filter und die Einsatzkarte passen sich an schmale Bildschirme an. Für vollständig netzwerkfreie Nutzung muss der Browser die bereits gecachten Leaflet-Dateien besitzen; andernfalls greift die integrierte Offline-Karte ohne externe Abhängigkeiten.
