@@ -12,12 +12,13 @@ Anschließend `http://localhost:8000` öffnen. Es gibt keine externe API, keine 
 
 ## Spielablauf
 
-- **Notrufe:** Neue Lagen erscheinen automatisch. Über „Eingehenden Notruf erfassen“ können eigene Anrufe mit Stichwort, Priorität, Ort und Lagebeschreibung aufgenommen werden.
+- **Notrufannahme und Triage:** Neue Lagen erscheinen automatisch. Eigene Anrufe erfassen Betroffenenzahl und Gefahrenhinweise; erst nach der Erstbewertung werden sie disponierbar.
 - **Einsatzqueue:** Einsätze sind nach Priorität sortiert. Die Detailansicht zeigt Empfehlung, Lageinformationen und alle freien Einheiten.
-- **Disposition:** Einheiten per Checkbox auswählen und alarmieren. Die Simulation führt sie durch `Anfahrt → vor Ort → Transport/Rückfahrt → bereit`. Medizinische P1/P2-Einsätze lösen standardmäßig einen Kliniktransport aus.
+- **Disposition:** Einheiten per Checkbox auswählen und alarmieren. Jede Einheit hat einen realistischen Funkrufnamen, Standort, Fahrzeugtyp und eigene Fähigkeiten. Empfehlungen können mehrere Behörden (z. B. Rettungsdienst plus Polizei oder Feuerwehr) umfassen; fehlende Fachkomponenten werden als Ressourcenrisiko bewertet.
+- **Einsatzstatus:** Lagen laufen durch `Neu/Triage → Anfahrt → vor Ort → Transport/Rückfahrt → bereit`. Rückfragen, Eskalationen, Sonderlagen und konkurrierende Ressourcen werden im Funkchronik protokolliert.
 - **Führung:** Rückfragen protokollieren, Einsätze eskalieren und den Funkverkehr beobachten. Nicht versorgte Lagen steigen nach einigen Simulationsminuten automatisch in der Priorität.
 - **Lagebild:** Wetter und Verkehr wechseln während der Schicht und verlängern Anfahrten. Karte und Ressourcenboard zeigen Einsatzorte, Einheiten und Verfügbarkeiten.
-- **Bewertung:** Schnelle Reaktion, passende Disposition und abgeschlossene Einsätze erhöhen die Schichtbewertung; vernachlässigte Notrufe kosten Punkte.
+- **Bewertung:** Schnelle Reaktion, passende Disposition und abgeschlossene Einsätze erhöhen die Schichtbewertung; vernachlässigte oder unvollständig versorgte Notrufe kosten Punkte. Die KPI zeigt zusätzlich die mittlere Annahmezeit.
 
 ## Steuerung
 

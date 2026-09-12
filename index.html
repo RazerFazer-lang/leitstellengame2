@@ -25,6 +25,7 @@
       <article class="kpi"><span class="kpi-icon cyan">↗</span><div><span>Reaktionsquote</span><strong id="responseRate">100%</strong></div></article>
       <article class="kpi"><span class="kpi-icon green">✓</span><div><span>Abgeschlossen</span><strong id="closedCount">0</strong></div></article>
       <article class="kpi"><span class="kpi-icon violet">◈</span><div><span>Freie Fahrzeuge</span><strong id="freeCount">0</strong></div></article>
+      <article class="kpi"><span class="kpi-icon red">◷</span><div><span>Ø Annahmezeit</span><strong id="answerTime">0:00</strong></div></article>
       <div class="shortcut-hint"><kbd>N</kbd> Notruf · <kbd>R</kbd> Funk · <kbd>1–4</kbd> Disposition</div>
     </section>
 
@@ -61,6 +62,8 @@
         <label>Ort / Straße<input name="location" placeholder="z. B. Hauptbahnhof, Gleis 4" required></label>
         <label>Ortsteil<select name="district" id="districtSelect"></select></label>
         <label>Anrufer/in<input name="caller" placeholder="Name oder Rückrufnummer"></label>
+        <label>Betroffene<input name="persons" type="number" min="1" max="99" value="1"></label>
+        <label>Gefahrgut / Waffe<select name="hazard"><option value="none">Keine Hinweise</option><option value="hazard">Gefahrgut / Rauch</option><option value="weapon">Waffe / Gewalt</option></select></label>
         <label class="wide">Angaben der anrufenden Person<textarea name="details" rows="3" placeholder="Was ist passiert? Wie viele Betroffene?"></textarea></label>
       </div>
       <div class="dialog-actions"><button value="cancel" class="ghost">Abbrechen</button><button value="default" class="primary">Einsatz anlegen</button></div>
